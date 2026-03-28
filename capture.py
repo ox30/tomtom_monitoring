@@ -46,7 +46,6 @@ ZONES = {
     "zone_globale_A2_A13": "https://plan.tomtom.com/en/?p=46.68973,8.93561,8.55z",
     "zone_A13_Chur":       "https://plan.tomtom.com/en/?p=46.89942,9.32459,9.75z",
     "zone_Chur_Isla-T":    "https://plan.tomtom.com/en/?p=46.84086,9.45618,12.17z",
-    "zone_Paris_test":    "https://plan.tomtom.com/en/?p=48.85285,2.40393,11.94z",
 }
 
 VIEWPORT_WIDTH  = 1920
@@ -66,12 +65,12 @@ FLOW_URL = (
 )
 INCIDENTS_API = "https://api.tomtom.com/traffic/services/5/incidentDetails"
 
-# Dessin incidents
-COLOR_CLOSED = (200, 30, 30, 220)
-COLOR_OTHER  = (120, 120, 120, 200)
-LINE_WIDTH   = 3
-DASH_ON      = 8
-DASH_OFF     = 6
+# Dessin incidents — plus épais et opaques pour ressortir sur le flow vert
+COLOR_CLOSED = (190, 25, 25, 255)       # Rouge — fermetures totales
+COLOR_OTHER  = (110, 110, 110, 255)     # Gris — autres incidents
+LINE_WIDTH   = 5                         # Épaisseur (était 3)
+DASH_ON      = 6                         # Trait (pixels)
+DASH_OFF     = 5                         # Espace (pixels)
 
 MAX_RETRIES     = 2
 REQUEST_TIMEOUT = 15
