@@ -1,15 +1,18 @@
 """
-TomTom Traffic Capture via API — GitHub Actions
-================================================
-Couches superposées :
-  1. Carte de base       — Map Display API (tuiles raster)
-  2. Traffic Flow        — Traffic API Raster Flow Tiles
-  3. Traffic Incidents   — Incident Details API v5 (dessin vectoriel Pillow)
+TomTom Traffic Capture — Hybrid (Playwright + API)
+===================================================
+Approche hybride pour le meilleur rendu possible :
 
-La couche incidents est dessinée en lignes pointillées fines
-pour reproduire fidèlement le rendu de plan.tomtom.com :
-  - Rouge = fermetures de route (Road Closed, iconCategory 8)
-  - Gris  = tous les autres incidents
+  1. Carte de base  → Playwright (screenshot de plan.tomtom.com SANS trafic)
+                      Rendu vectoriel parfait : labels, badges A13, densité de routes.
+                      Capturée 1× par démarrage de workflow (~6h).
+
+  2. Traffic Flow   → API TomTom Raster Flow Tiles (tuiles transparentes)
+                      Superposées toutes les 10 min.
+
+  3. Incidents      → API Incident Details v5 + dessin Pillow
+                      Lignes pointillées : rouge=fermetures, gris=autres.
+                      Dessinées toutes les 10 min.
 
 Horodatage : Europe/Zurich (CET/CEST)
 Structure  : captures/YYYY-MM-DD/zone_name/YYYY-MM-DD-HHMM_zone_name.jpg
@@ -50,15 +53,12 @@ VIEWPORT_HEIGHT = 1080
 TILE_SIZE       = 512
 
 OUTPUT_DIR     = Path("captures")
-CACHE_DIR      = Path(".tile-cache")
+BASE_CACHE_DIR = Path(".base-cache")
+TILE_CACHE_DIR = Path(".tile-cache")
 TIMEZONE       = ZoneInfo("Europe/Zurich")
 RETENTION_DAYS = 7
 
-# Endpoints
-BASE_URL = (
-    "https://api.tomtom.com/map/1/tile/basic/main"
-    "/{z}/{x}/{y}.png?tileSize={ts}&key={key}"
-)
+# Endpoints API
 FLOW_URL = (
     "https://api.tomtom.com/traffic/map/4/tile/flow/relative"
     "/{z}/{x}/{y}.png?tileSize={ts}&thickness=2&key={key}"
@@ -66,8 +66,8 @@ FLOW_URL = (
 INCIDENTS_API = "https://api.tomtom.com/traffic/services/5/incidentDetails"
 
 # Dessin incidents
-COLOR_CLOSED = (200, 30, 30, 220)       # Rouge — fermetures totales
-COLOR_OTHER  = (120, 120, 120, 200)     # Gris — autres incidents
+COLOR_CLOSED = (200, 30, 30, 220)
+COLOR_OTHER  = (120, 120, 120, 200)
 LINE_WIDTH   = 3
 DASH_ON      = 8
 DASH_OFF     = 6
@@ -114,12 +114,12 @@ def parse_tomtom_url(url: str) -> dict:
     lat       = float(m.group(1))
     lon       = float(m.group(2))
     zoom_frac = float(m.group(3))
-    # floor() → utilise le niveau de zoom inférieur pour reproduire
-    # la densité de routes de plan.tomtom.com (qui masque les petites
-    # routes via son style vectoriel aux zooms fractionnaires)
-    zoom      = int(math.floor(zoom_frac))
+    zoom      = round(zoom_frac)
 
-    return {"lat": lat, "lon": lon, "zoom": zoom, "zoom_frac": zoom_frac}
+    return {
+        "lat": lat, "lon": lon, "zoom": zoom, "zoom_frac": zoom_frac,
+        "url": url,
+    }
 
 
 def parse_zone_config(value) -> dict:
@@ -162,10 +162,7 @@ def get_tile_grid(lat, lon, zoom, width=VIEWPORT_WIDTH, height=VIEWPORT_HEIGHT):
     off_y = int(tl_py - y0 * TILE_SIZE)
 
     mx = 2 ** zoom - 1
-    x0, y0 = max(0, x0), max(0, y0)
-    x1, y1 = min(mx, x1), min(mx, y1)
-
-    return x0, y0, x1, y1, off_x, off_y
+    return max(0, x0), max(0, y0), min(mx, x1), min(mx, y1), off_x, off_y
 
 
 def get_viewport_bbox(lat, lon, zoom, width, height):
@@ -176,7 +173,188 @@ def get_viewport_bbox(lat, lon, zoom, width, height):
     return (lon_tl, lat_br, lon_br, lat_tl)
 
 # =============================================================================
-# TÉLÉCHARGEMENT TUILES
+# PLAYWRIGHT — CAPTURE CARTE DE BASE (sans trafic)
+# =============================================================================
+
+# Scripts injectés pour supprimer popups
+INIT_SCRIPT = """
+(() => {
+    try {
+        localStorage.setItem('tt.welcomeModalDismissed', 'true');
+        localStorage.setItem('tt.welcomeModalSeen', 'true');
+        localStorage.setItem('tt.onboarding.dismissed', 'true');
+        localStorage.setItem('tt.onboarding.completed', 'true');
+        localStorage.setItem('welcomeModalDismissed', 'true');
+        localStorage.setItem('welcome-modal-dismissed', 'true');
+        localStorage.setItem('has-seen-welcome', 'true');
+        localStorage.setItem('tt.cookieConsent', 'accepted');
+        localStorage.setItem('cookieConsent', 'accepted');
+        localStorage.setItem('cookie-consent-accepted', 'true');
+    } catch(e) {}
+})();
+"""
+
+CLEANUP_CSS = """
+[class*="cookie" i], [id*="cookie" i],
+[class*="consent" i], [id*="consent" i],
+[class*="welcome" i], [id*="welcome" i],
+[class*="onboarding" i], [id*="onboarding" i],
+[class*="modal" i]:not([class*="map" i]),
+[id*="modal" i]:not([id*="map" i]),
+[class*="backdrop" i],
+[class*="toast" i], [class*="snackbar" i],
+[class*="map-options" i], [class*="mapOptions" i],
+[class*="sidebar" i]:not([class*="map" i]),
+[class*="side-panel" i], [class*="sidePanel" i],
+[class*="search" i]:not([class*="map" i]),
+[class*="header" i]:not([class*="map" i]),
+[class*="toolbar" i], [class*="tool-bar" i],
+[class*="feedback" i], [class*="sign-in" i],
+[class*="road-trip" i], [class*="roadTrip" i],
+button[class*="zoom" i], [class*="controls" i]:not([class*="map" i]),
+[class*="logo" i]:not([class*="map" i]),
+[class*="copyright" i], [class*="attribution" i]
+{
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+"""
+
+
+def capture_base_maps(parsed_zones: dict) -> dict:
+    """
+    Capture les cartes de base de toutes les zones via Playwright.
+    Pas de trafic activé — carte nue uniquement.
+
+    Returns:
+        dict[str, Path]: zone_name → chemin du PNG en cache
+    """
+    from playwright.sync_api import sync_playwright
+
+    BASE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    base_maps = {}
+
+    print(f"\n{'='*60}")
+    print("CAPTURE CARTES DE BASE (Playwright)")
+    print(f"{'='*60}")
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(
+            viewport={"width": VIEWPORT_WIDTH, "height": VIEWPORT_HEIGHT},
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+        )
+        context.add_init_script(INIT_SCRIPT)
+        context.add_cookies([
+            {"name": "cookieConsent",     "value": "accepted", "domain": ".tomtom.com",      "path": "/"},
+            {"name": "tt_cookie_consent", "value": "all",      "domain": ".tomtom.com",      "path": "/"},
+            {"name": "cookie-agreed",     "value": "2",        "domain": ".plan.tomtom.com", "path": "/"},
+        ])
+
+        for name, config in parsed_zones.items():
+            cache_path = BASE_CACHE_DIR / f"{name}.png"
+            url = config["url"]
+
+            print(f"\n[{name}] Chargement de {url}")
+
+            page = context.new_page()
+            try:
+                page.goto(url, wait_until="networkidle", timeout=60_000)
+                print(f"  → Page chargée (networkidle)")
+                time.sleep(3)
+
+                # Fermer les popups cookies
+                for selector in [
+                    "button:has-text('Accept all')",
+                    "button:has-text('Accept')",
+                    "[data-testid='cookie-accept']",
+                    "button[class*='accept' i]",
+                ]:
+                    try:
+                        btn = page.query_selector(selector)
+                        if btn and btn.is_visible():
+                            btn.click()
+                            print(f"  → Cookies acceptés via: {selector}")
+                            time.sleep(0.5)
+                            break
+                    except Exception:
+                        continue
+
+                # Fermer modals
+                for selector in [
+                    "button:has-text(\"Let's plan\")",
+                    "[aria-label='Close']",
+                    "[aria-label='close']",
+                    "button.close",
+                    "button[class*='close' i]",
+                ]:
+                    try:
+                        btn = page.query_selector(selector)
+                        if btn and btn.is_visible():
+                            btn.click()
+                            print(f"  → Modal fermé via: {selector}")
+                            time.sleep(0.5)
+                            break
+                    except Exception:
+                        continue
+
+                # Supprimer overlays du DOM
+                removed = page.evaluate("""
+                    (() => {
+                        let count = 0;
+                        document.querySelectorAll(
+                            '[class*="modal" i], [class*="overlay" i], ' +
+                            '[class*="welcome" i], [class*="cookie" i], ' +
+                            '[class*="consent" i], [class*="backdrop" i]'
+                        ).forEach(el => {
+                            const cls = (el.className || '').toString().toLowerCase();
+                            if (!cls.includes('map') && !cls.includes('leaflet')) {
+                                el.remove(); count++;
+                            }
+                        });
+                        return count;
+                    })()
+                """)
+                if removed:
+                    print(f"  → {removed} overlay(s) supprimé(s)")
+
+                # Injecter CSS pour masquer l'UI (barre de recherche, etc.)
+                page.add_style_tag(content=CLEANUP_CSS)
+                time.sleep(1)
+
+                # Attendre que les tuiles de la carte soient chargées
+                time.sleep(3)
+
+                # Screenshot en PNG (sans perte, pour superposition propre)
+                page.screenshot(path=str(cache_path), type="png")
+                print(f"  ✓ {cache_path} ({cache_path.stat().st_size / 1024:.0f} KB)")
+                base_maps[name] = cache_path
+
+                # Copie dans captures/_base/ pour inspection visuelle
+                debug_dir = OUTPUT_DIR / "_base"
+                debug_dir.mkdir(parents=True, exist_ok=True)
+                debug_path = debug_dir / f"{name}_base.jpg"
+                Image.open(cache_path).convert("RGB").save(
+                    str(debug_path), "JPEG", quality=90)
+                print(f"  → Copie inspection: {debug_path}")
+
+            except Exception as e:
+                print(f"  ✗ Erreur: {e}")
+            finally:
+                page.close()
+
+        browser.close()
+
+    return base_maps
+
+# =============================================================================
+# API — TUILES FLOW
 # =============================================================================
 
 session = requests.Session()
@@ -188,7 +366,7 @@ session.headers["User-Agent"] = "TomTomCapture/2.0"
 
 def fetch_tile(url, cache_key=None):
     if cache_key:
-        cp = CACHE_DIR / cache_key
+        cp = TILE_CACHE_DIR / cache_key
         if cp.exists():
             counter.tiles_cached += 1
             return Image.open(cp).convert("RGBA")
@@ -200,7 +378,7 @@ def fetch_tile(url, cache_key=None):
             img = Image.open(BytesIO(r.content)).convert("RGBA")
             counter.tiles_fetched += 1
             if cache_key:
-                cp = CACHE_DIR / cache_key
+                cp = TILE_CACHE_DIR / cache_key
                 cp.parent.mkdir(parents=True, exist_ok=True)
                 img.save(str(cp), "PNG")
             return img
@@ -214,12 +392,37 @@ def fetch_tile(url, cache_key=None):
 
     return Image.new("RGBA", (TILE_SIZE, TILE_SIZE), (0, 0, 0, 0))
 
+
+def build_flow_layer(lat, lon, zoom, width, height):
+    """Télécharge et assemble les tuiles flow pour un viewport donné."""
+    x0, y0, x1, y1, off_x, off_y = get_tile_grid(lat, lon, zoom, width, height)
+    coords = [(x, y) for x in range(x0, x1 + 1) for y in range(y0, y1 + 1)]
+
+    tiles = {}
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+        futures = []
+        for tx, ty in coords:
+            url = FLOW_URL.format(z=zoom, x=tx, y=ty, ts=TILE_SIZE, key=API_KEY)
+            futures.append((tx, ty, pool.submit(fetch_tile, url, None)))
+
+        for tx, ty, fut in futures:
+            tiles[(tx, ty)] = fut.result()
+
+    # Assembler
+    cols, rows = x1 - x0 + 1, y1 - y0 + 1
+    canvas = Image.new("RGBA", (cols * TILE_SIZE, rows * TILE_SIZE), (0, 0, 0, 0))
+    for (tx, ty), img in tiles.items():
+        canvas.paste(img, ((tx - x0) * TILE_SIZE, (ty - y0) * TILE_SIZE))
+
+    # Découper au viewport exact
+    return canvas.crop((off_x, off_y, off_x + width, off_y + height)), len(coords)
+
+
 # =============================================================================
-# INCIDENTS — API v5 + DESSIN VECTORIEL
+# API — INCIDENTS v5 + DESSIN PILLOW
 # =============================================================================
 
 def fetch_incidents(bbox):
-    """Appelle Incident Details API v5, retourne [{coords, closed}]."""
     min_lon, min_lat, max_lon, max_lat = bbox
     fields = "{incidents{type,geometry{type,coordinates},properties{iconCategory}}}"
     url = (f"{INCIDENTS_API}?key={API_KEY}"
@@ -256,20 +459,16 @@ def fetch_incidents(bbox):
 
 def draw_dashed_line(draw, points, color, width=LINE_WIDTH,
                      dash_on=DASH_ON, dash_off=DASH_OFF):
-    """Polyligne en pointillés."""
     residual = 0
     drawing = True
-
     for i in range(len(points) - 1):
         x0, y0 = points[i]
         x1, y1 = points[i + 1]
         seg_len = math.hypot(x1 - x0, y1 - y0)
         if seg_len < 1:
             continue
-
         ux, uy = (x1 - x0) / seg_len, (y1 - y0) / seg_len
         consumed = 0.0
-
         while consumed < seg_len:
             dash_len = dash_on if drawing else dash_off
             step = min(dash_len - residual, seg_len - consumed)
@@ -286,13 +485,15 @@ def draw_dashed_line(draw, points, color, width=LINE_WIDTH,
                 drawing = not drawing
 
 
-def render_incidents(incidents, zoom, canvas_w, canvas_h, x0_tile, y0_tile):
-    """Dessine les incidents sur un calque transparent."""
-    origin_px = x0_tile * TILE_SIZE
-    origin_py = y0_tile * TILE_SIZE
-
-    canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+def render_incidents(incidents, lat, lon, zoom, width, height):
+    """Dessine les incidents directement en coordonnées viewport."""
+    canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(canvas)
+
+    # Calculer l'origine pixel du viewport
+    cx_px, cy_px = lat_lon_to_pixel(lat, lon, zoom)
+    origin_x = cx_px - width / 2
+    origin_y = cy_px - height / 2
 
     other_lines, closed_lines = [], []
 
@@ -300,12 +501,11 @@ def render_incidents(incidents, zoom, canvas_w, canvas_h, x0_tile, y0_tile):
         pts = []
         for coord in inc["coords"]:
             px, py = lat_lon_to_pixel(coord[1], coord[0], zoom)
-            pts.append((int(px - origin_px), int(py - origin_py)))
+            pts.append((int(px - origin_x), int(py - origin_y)))
         if len(pts) < 2:
             continue
         (closed_lines if inc["closed"] else other_lines).append(pts)
 
-    # Gris en-dessous, rouge par-dessus
     for pts in other_lines:
         draw_dashed_line(draw, pts, COLOR_OTHER)
     for pts in closed_lines:
@@ -315,103 +515,49 @@ def render_incidents(incidents, zoom, canvas_w, canvas_h, x0_tile, y0_tile):
     print(f"    → {n} incidents ({len(closed_lines)} fermetures, {len(other_lines)} autres)")
     return canvas
 
-# =============================================================================
-# ASSEMBLAGE
-# =============================================================================
-
-def build_layer(tiles, x0, y0, x1, y1):
-    cols, rows = x1 - x0 + 1, y1 - y0 + 1
-    canvas = Image.new("RGBA", (cols * TILE_SIZE, rows * TILE_SIZE), (0, 0, 0, 0))
-    for (tx, ty), img in tiles.items():
-        px = (tx - x0) * TILE_SIZE
-        py = (ty - y0) * TILE_SIZE
-        if img.size != (TILE_SIZE, TILE_SIZE):
-            img = img.resize((TILE_SIZE, TILE_SIZE), Image.LANCZOS)
-        canvas.paste(img, (px, py))
-    return canvas
 
 # =============================================================================
-# CAPTURE
+# CAPTURE D'UN CYCLE (flow + incidents sur carte de base cachée)
 # =============================================================================
 
-def capture_zone(name, config):
+def capture_zone(name, config, base_map_path):
+    """Superpose flow + incidents sur la carte de base Playwright."""
     now = datetime.now(TIMEZONE)
     date_str = now.strftime("%Y-%m-%d")
     time_str = now.strftime("%H%M")
 
     lat, lon, zoom = config["lat"], config["lon"], config["zoom"]
-    zoom_frac = config.get("zoom_frac", float(zoom))
-
-    # Avec floor(), zoom ≤ zoom_frac → scale < 1 → viewport plus petit → upscale
-    # Ex: 9.75→9 : scale=0.60 → fetch 1143×643 → upscale à 1920×1080
-    # Cela reproduit la densité de routes de plan.tomtom.com
-    scale = 2 ** (zoom - zoom_frac)  # < 1 quand zoom < zoom_frac
-    fw = max(256, round(VIEWPORT_WIDTH * scale))
-    fh = max(256, round(VIEWPORT_HEIGHT * scale))
-    needs_resize = abs(scale - 1.0) > 0.01
 
     zone_dir = OUTPUT_DIR / date_str / name
     zone_dir.mkdir(parents=True, exist_ok=True)
     filename = zone_dir / f"{date_str}-{time_str}_{name}.jpg"
 
-    print(f"\n{'='*60}")
-    print(f"[{name}] {now.strftime('%Y-%m-%d %H:%M %Z')}")
-    if needs_resize:
-        print(f"[{name}] zoom={zoom_frac}→{zoom}  scale={scale:.3f}"
-              f"  fetch={fw}×{fh}→{VIEWPORT_WIDTH}×{VIEWPORT_HEIGHT}")
-    else:
-        print(f"[{name}] zoom={zoom}  center=({lat:.5f}, {lon:.5f})")
+    print(f"\n[{name}] {now.strftime('%H:%M %Z')}")
 
-    # Grille
-    x0, y0, x1, y1, off_x, off_y = get_tile_grid(lat, lon, zoom, fw, fh)
-    coords = [(x, y) for x in range(x0, x1 + 1) for y in range(y0, y1 + 1)]
-    n = len(coords)
-    print(f"[{name}] Grille: {x1-x0+1}×{y1-y0+1} = {n} tuiles/couche"
-          f"  ({n*2} tuiles + 1 appel incidents)")
+    # Charger la carte de base
+    base = Image.open(base_map_path).convert("RGBA")
 
-    # Tuiles base + flow
-    base_tiles, flow_tiles = {}, {}
-    futures = []
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
-        for tx, ty in coords:
-            burl = BASE_URL.format(z=zoom, x=tx, y=ty, ts=TILE_SIZE, key=API_KEY)
-            ck = f"base/{date_str}/{zoom}/{tx}_{ty}.png"
-            futures.append(("base", tx, ty, pool.submit(fetch_tile, burl, ck)))
-
-            furl = FLOW_URL.format(z=zoom, x=tx, y=ty, ts=TILE_SIZE, key=API_KEY)
-            futures.append(("flow", tx, ty, pool.submit(fetch_tile, furl, None)))
-
-        for layer, tx, ty, fut in futures:
-            img = fut.result()
-            if layer == "base":
-                base_tiles[(tx, ty)] = img
-            else:
-                flow_tiles[(tx, ty)] = img
+    # Flow tiles
+    flow_layer, n_tiles = build_flow_layer(lat, lon, zoom,
+                                            VIEWPORT_WIDTH, VIEWPORT_HEIGHT)
 
     # Incidents
-    bbox = get_viewport_bbox(lat, lon, zoom, fw, fh)
-    print(f"[{name}] Incidents API (bbox={bbox[0]:.3f},{bbox[1]:.3f},{bbox[2]:.3f},{bbox[3]:.3f})...")
+    bbox = get_viewport_bbox(lat, lon, zoom, VIEWPORT_WIDTH, VIEWPORT_HEIGHT)
     incidents = fetch_incidents(bbox)
+    inc_layer = render_incidents(incidents, lat, lon, zoom,
+                                 VIEWPORT_WIDTH, VIEWPORT_HEIGHT)
 
-    # Assemblage
-    print(f"[{name}] Assemblage...")
-    base_layer = build_layer(base_tiles, x0, y0, x1, y1)
-    flow_layer = build_layer(flow_tiles, x0, y0, x1, y1)
-    inc_layer  = render_incidents(incidents, zoom,
-                                  base_layer.size[0], base_layer.size[1], x0, y0)
-
-    composite = Image.alpha_composite(base_layer, flow_layer)
+    # Composite : base → flow → incidents
+    composite = Image.alpha_composite(base, flow_layer)
     composite = Image.alpha_composite(composite, inc_layer)
 
-    cropped = composite.crop((off_x, off_y, off_x + fw, off_y + fh))
-    if needs_resize:
-        cropped = cropped.resize((VIEWPORT_WIDTH, VIEWPORT_HEIGHT), Image.LANCZOS)
-
-    final = cropped.convert("RGB")
+    # Sauvegarder
+    final = composite.convert("RGB")
     final.save(str(filename), "JPEG", quality=85, optimize=True)
-    print(f"[{name}] ✓ {filename} ({filename.stat().st_size / 1024:.0f} KB)")
+    print(f"  ✓ {filename} ({filename.stat().st_size / 1024:.0f} KB)")
 
-    return n * 2
+    return n_tiles
+
 
 # =============================================================================
 # MAINTENANCE
@@ -432,8 +578,8 @@ def rotate_old_days():
             continue
 
 
-def clear_stale_cache():
-    marker = CACHE_DIR / ".cache-date"
+def clear_tile_cache():
+    marker = TILE_CACHE_DIR / ".cache-date"
     today = datetime.now(TIMEZONE).strftime("%Y-%m-%d")
     if marker.exists():
         try:
@@ -441,30 +587,68 @@ def clear_stale_cache():
                 return
         except Exception:
             pass
-    if CACHE_DIR.exists():
-        shutil.rmtree(CACHE_DIR)
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    if TILE_CACHE_DIR.exists():
+        shutil.rmtree(TILE_CACHE_DIR)
+    TILE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     marker.write_text(today)
-    print("[cache] Cache réinitialisé")
 
 # =============================================================================
-# MAIN
+# POINTS D'ENTRÉE
 # =============================================================================
+
+def run_base_capture(parsed_zones):
+    """Appelé 1× par démarrage de workflow."""
+    return capture_base_maps(parsed_zones)
+
+
+def run_cycle(parsed_zones, base_maps):
+    """Appelé toutes les 10 min."""
+    now = datetime.now(TIMEZONE)
+    print(f"\n{'='*60}")
+    print(f"CYCLE — {now.strftime('%Y-%m-%d %H:%M %Z')}")
+    print(f"{'='*60}")
+
+    total_tiles = 0
+    errors = 0
+
+    for name, config in parsed_zones.items():
+        base_path = base_maps.get(name)
+        if not base_path or not base_path.exists():
+            print(f"[{name}] ✗ Carte de base manquante, skip")
+            errors += 1
+            continue
+        try:
+            total_tiles += capture_zone(name, config, base_path)
+        except Exception as e:
+            print(f"[{name}] ✗ {e}")
+            errors += 1
+
+    print(f"\nRésumé: {len(parsed_zones) - errors}/{len(parsed_zones)} zones OK")
+    print(f"{counter}")
+    return errors
+
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--base-only", action="store_true",
+                        help="Capturer uniquement les cartes de base")
+    parser.add_argument("--cycle-only", action="store_true",
+                        help="Exécuter un cycle flow+incidents (base déjà en cache)")
+    args = parser.parse_args()
+
     if not API_KEY:
         print("✗ TOMTOM_API_KEY non définie !")
         sys.exit(1)
 
+    # Parser zones
     parsed_zones = {}
     print("Zones configurées:")
     for name, value in ZONES.items():
         try:
             cfg = parse_zone_config(value)
             parsed_zones[name] = cfg
-            zf = cfg.get("zoom_frac", cfg["zoom"])
-            zi = f"zoom={zf}→{cfg['zoom']}" if zf != cfg["zoom"] else f"zoom={cfg['zoom']}"
-            print(f"  ✓ {name}: lat={cfg['lat']:.5f} lon={cfg['lon']:.5f} {zi}")
+            print(f"  ✓ {name}: zoom={cfg['zoom_frac']}→{cfg['zoom']}")
         except Exception as e:
             print(f"  ✗ {name}: {e}")
 
@@ -472,26 +656,26 @@ if __name__ == "__main__":
         print("✗ Aucune zone valide !")
         sys.exit(1)
 
-    clear_stale_cache()
+    clear_tile_cache()
 
-    total_tiles = 0
-    errors = 0
-    for zn, zc in parsed_zones.items():
-        try:
-            total_tiles += capture_zone(zn, zc)
-        except Exception as e:
-            print(f"[{zn}] ✗ Erreur: {e}")
-            errors += 1
-
-    print(f"\n{'='*60}")
-    print(f"Résumé: {len(parsed_zones) - errors}/{len(parsed_zones)} zones OK")
-    print(f"{counter}")
-    print(f"{'='*60}")
+    if args.cycle_only:
+        # Vérifier que les bases existent
+        base_maps = {}
+        for name in parsed_zones:
+            p = BASE_CACHE_DIR / f"{name}.png"
+            if p.exists():
+                base_maps[name] = p
+            else:
+                print(f"  ⚠ Base manquante pour {name}")
+        errors = run_cycle(parsed_zones, base_maps)
+    elif args.base_only:
+        run_base_capture(parsed_zones)
+    else:
+        # Mode complet : base + un cycle
+        base_maps = run_base_capture(parsed_zones)
+        errors = run_cycle(parsed_zones, base_maps)
 
     try:
         rotate_old_days()
     except Exception as e:
         print(f"[rotation] ✗ {e}")
-
-    if errors == len(parsed_zones):
-        sys.exit(1)
