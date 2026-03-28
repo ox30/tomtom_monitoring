@@ -336,13 +336,16 @@ def capture_base_maps(parsed_zones: dict) -> dict:
                 print(f"  ✓ {cache_path} ({cache_path.stat().st_size / 1024:.0f} KB)")
                 base_maps[name] = cache_path
 
-                # Copie dans captures/_base/ pour inspection visuelle
-                debug_dir = OUTPUT_DIR / "_base"
+                # Copie dans captures/_base/YYYY-MM-DD/ horodatée
+                now_base = datetime.now(TIMEZONE)
+                base_date = now_base.strftime("%Y-%m-%d")
+                base_time = now_base.strftime("%H%M")
+                debug_dir = OUTPUT_DIR / "_base" / base_date
                 debug_dir.mkdir(parents=True, exist_ok=True)
-                debug_path = debug_dir / f"{name}_base.jpg"
+                debug_path = debug_dir / f"{name}_base_{base_time}.jpg"
                 Image.open(cache_path).convert("RGB").save(
                     str(debug_path), "JPEG", quality=90)
-                print(f"  → Copie inspection: {debug_path}")
+                print(f"  → Historique: {debug_path}")
 
             except Exception as e:
                 print(f"  ✗ Erreur: {e}")
@@ -594,6 +597,8 @@ def rotate_old_days():
     if not OUTPUT_DIR.exists():
         return
     cutoff = datetime.now(TIMEZONE).date() - timedelta(days=RETENTION_DAYS)
+
+    # Nettoyer les captures normales
     for d in sorted(OUTPUT_DIR.iterdir()):
         if not d.is_dir() or d.name.startswith("_"):
             continue
@@ -603,6 +608,19 @@ def rotate_old_days():
                 print(f"[rotation] Supprimé: {d.name}")
         except ValueError:
             continue
+
+    # Nettoyer les bases historiques (_base/YYYY-MM-DD/)
+    base_dir = OUTPUT_DIR / "_base"
+    if base_dir.exists():
+        for d in sorted(base_dir.iterdir()):
+            if not d.is_dir():
+                continue
+            try:
+                if datetime.strptime(d.name, "%Y-%m-%d").date() < cutoff:
+                    shutil.rmtree(d)
+                    print(f"[rotation] Supprimé: _base/{d.name}")
+            except ValueError:
+                continue
 
 
 def clear_tile_cache():
