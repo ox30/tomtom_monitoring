@@ -1,40 +1,81 @@
-# TomTom Traffic Capture — API Edition
+# TomTom Traffic Capture — Vector Flow Edition
 
-Capture automatique du trafic routier (A13, Grisons) via l'**API TomTom** toutes les 10 minutes, orchestrée par GitHub Actions.
+Capture automatique du trafic routier (A13/A2, Grisons) via l'**API TomTom**, orchestrée par GitHub Actions.
 
 ## Principe
 
 ```
-┌─────────────┐     ┌──────────────────┐     ┌──────────────┐
-│  GitHub      │────▶│  capture.py      │────▶│  branche     │
-│  Actions     │     │  (requests +     │     │  captures/   │
-│  (cron 10m)  │     │   Pillow)        │     │  (JPEG)      │
-└─────────────┘     └──────────────────┘     └──────────────┘
-                            │
-                    ┌───────┼───────┐
-                    ▼       ▼       ▼
-              Base Map   Flow    Incidents
-              (tuiles)  (tuiles)  (tuiles)
-                    │       │       │
-                    └───────┼───────┘
-                            ▼
-                     Composite JPEG
-                     1920 × 1080
+┌──────────────────────────────────────────────────────────┐
+│  3 couches superposées par Pillow                        │
+│                                                          │
+│  1. 🗺️  Carte de base    → API Static Image (1 requête) │
+│  2. 🚗  Traffic Flow      → Vector Tiles (.pbf)          │
+│     ├── Filtrage par type de route (motorway, major…)    │
+│     ├── Épaisseur proportionnelle à la catégorie         │
+│     └── Couleurs relative0 de plan.tomtom.com            │
+│  3. ⚠️  Incidents         → API v5 + pointillés Pillow   │
+└──────────────────────────────────────────────────────────┘
 ```
 
-**3 couches superposées :**
-1. 🗺️ Carte de base (Map Display API)
-2. 🟢🟡🔴 Traffic Flow — vitesse relative sur les segments
-3. ⚠️ Traffic Incidents — bouchons et incidents
+## vs Versions précédentes
 
-## vs Ancienne version (Playwright)
+|                  | Playwright (v1) | Raster tiles (v2) | **Vector tiles (v3)** |
+|------------------|-----------------|--------------------|-----------------------|
+| Dépendances      | Chromium ~400MB | requests + Pillow  | **requests + Pillow** |
+| Temps/capture    | ~45s            | ~5s                | **~5s**               |
+| Fiabilité        | Fragile         | Déterministe       | **Déterministe**      |
+| Filtrage routes  | ✗               | ✗                  | **✓ par catégorie**   |
+| Charte TomTom    | ~80%            | ~60%               | **~95%**              |
+| Épaisseur lignes | Non contrôlable | Fixe               | **Par type de route** |
 
-| | Playwright (v1) | API (v2) |
-|---|---|---|
-| Dépendances | Chromium (~400 MB) | requests + Pillow (~5 MB) |
-| Temps/capture | ~45s (3 zones) | ~5s (3 zones) |
-| Fiabilité | Fragile (popups, modals) | Déterministe |
-| Budget | N/A | ~15'500 / 50'000 tuiles/jour |
+## Configuration
+
+Tout se configure dans `capture.py` :
+
+```python
+# Zones — collez directement l'URL de plan.tomtom.com
+ZONES = {
+    "zone_globale_A2_A13": "https://plan.tomtom.com/en/?p=46.68973,8.93561,8.55z",
+    "zone_A13_Chur":       "https://plan.tomtom.com/en/?p=46.89942,9.32459,9.75z",
+    "zone_Chur_Isla-T":    "https://plan.tomtom.com/en/?p=46.84086,9.45618,12.17z",
+}
+
+# Filtrage des routes par zoom — ajustable
+ROAD_TYPES_BY_ZOOM = {
+    8:  [0],            # Motorway uniquement
+    9:  [0, 1],         # + International
+    10: [0, 1, 2],      # + Major
+    12: [0, 1, 2, 3],   # + Secondary
+}
+```
+
+### Ajouter une zone
+
+1. Aller sur [plan.tomtom.com](https://plan.tomtom.com/)
+2. Naviguer/zoomer jusqu'à la vue souhaitée
+3. Copier l'URL du navigateur
+4. Ajouter dans `ZONES`
+
+### Types de route (roadTypes)
+
+| Code | Type              | Exemple              |
+|------|-------------------|----------------------|
+| 0    | Motorway          | A2, A13              |
+| 1    | International road| Routes nationales    |
+| 2    | Major road        | Routes cantonales    |
+| 3    | Secondary road    | Routes régionales    |
+| 4    | Connecting road   | Liaisons locales     |
+| 5+   | Local roads       | Routes communales    |
+
+### Charte visuelle (relative0)
+
+| État du trafic        | Couleur   | traffic_level |
+|-----------------------|-----------|---------------|
+| Fluide                | 🟢 Vert   | ≥ 0.75        |
+| Ralenti               | 🟡 Jaune  | 0.35 – 0.75   |
+| Congestionné          | 🟠 Orange | 0.15 – 0.35   |
+| Très congestionné     | 🔴 Rouge  | < 0.15         |
+| Fermé                 | ⬛ Rouge foncé | road_closure  |
 
 ## Installation
 
@@ -49,57 +90,18 @@ Capture automatique du trafic routier (A13, Grisons) via l'**API TomTom** toutes
 ### 2. Activer le workflow
 
 Le workflow démarre automatiquement via cron. Pour un lancement manuel :
-**Actions → TomTom Traffic Capture (API) → Run workflow**
+**Actions → TomTom Traffic Capture (Vector Flow) → Run workflow**
 
-## Configuration
+## Développement local
 
-Tout se configure dans `capture.py` :
-
-```python
-# Zones — collez directement l'URL de plan.tomtom.com
-ZONES = {
-    "zone_globale_A2_A13": "https://plan.tomtom.com/en/?p=46.68973,8.93561,8.55z",
-    "zone_A13_Chur":       "https://plan.tomtom.com/en/?p=46.89942,9.32459,9.75z",
-    "zone_Chur_Isla-T":    "https://plan.tomtom.com/en/?p=46.84086,9.45618,12.17z",
-}
-
-VIEWPORT_WIDTH  = 1920       # Largeur de l'image finale
-VIEWPORT_HEIGHT = 1080       # Hauteur
-TILE_SIZE       = 512        # 512×512 (meilleure qualité)
-RETENTION_DAYS  = 7          # Durée de conservation
+```bash
+export TOMTOM_API_KEY="votre_clé"
+pip install requests Pillow
+python capture.py
 ```
-
-### Ajouter une zone
-
-1. Aller sur [plan.tomtom.com](https://plan.tomtom.com/)
-2. Naviguer/zoomer jusqu'à la vue souhaitée
-3. Copier l'URL du navigateur
-4. Ajouter dans `ZONES` :
-```python
-"ma_nouvelle_zone": "https://plan.tomtom.com/en/?p=47.12345,8.54321,11.5z",
-```
-
-Le système extrait automatiquement lat, lon et zoom depuis l'URL.
-Le zoom fractionnaire (ex: 8.55) est arrondi à l'entier le plus proche.
-
-### Budget tuiles
-
-| Paramètre | Impact |
-|---|---|
-| +1 zone | +36 tuiles/capture |
-| Zoom +1 | ~même nombre de tuiles |
-| Intervalle ÷2 | Budget ×2 |
 
 ## Captures
 
 Les captures sont sur la branche `captures` :
 - **Naviguer** : [branche captures](../../tree/captures)
 - **ZIP complet** : [télécharger](../../archive/refs/heads/captures.zip)
-
-## Développement local
-
-```bash
-export TOMTOM_API_KEY="votre_clé"
-pip install -r requirements.txt
-python capture.py
-```
