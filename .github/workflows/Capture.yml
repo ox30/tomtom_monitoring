@@ -31,12 +31,18 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Sauvegarder les fichiers de travail
+        run: |
+          # Copier ce dont on a besoin hors du repo
+          cp capture.py /tmp/capture.py
+          cp requirements.txt /tmp/requirements.txt 2>/dev/null || true
+
       - name: Restaurer les données existantes
         run: |
           git fetch origin captures --depth=1 2>/dev/null && \
           git checkout origin/captures -- captures/ bases/ 2>/dev/null && \
           echo "✓ Données précédentes restaurées" || \
-          echo "→ Première exécution — pas de données précédentes"
+          echo "→ Première exécution"
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -62,11 +68,22 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+          # ── Préparer la branche captures (propre) ──────────────
+          # Sauvegarder les données existantes
+          cp -r captures/ /tmp/captures 2>/dev/null || true
+          cp -r bases/ /tmp/bases 2>/dev/null || true
+
+          # Créer une branche orpheline vierge
           git checkout --orphan captures-work
           git rm -rf --cached . -q 2>/dev/null || true
 
-          # Créer les dossiers racine pour éviter les erreurs git add
-          mkdir -p captures bases
+          # Supprimer TOUT du working directory
+          find . -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+
+          # Restaurer UNIQUEMENT ce qu'on veut sur la branche captures
+          cp /tmp/capture.py capture.py
+          cp -r /tmp/captures captures 2>/dev/null || mkdir -p captures
+          cp -r /tmp/bases bases 2>/dev/null || mkdir -p bases
 
           # README pour la branche captures
           cat > README.md << 'EOF'
@@ -85,18 +102,17 @@ jobs:
           ## Structure
 
           ```
-          captures/                                              ← composites (base + flow + incidents)
+          captures/                                    ← composites toutes les 10 min
             2026-03-29/
               zone_A13_Chur/
-                2026-03-29-0830_zone_A13_Chur.jpg                ← heure locale Zurich
-                2026-03-29-0840_zone_A13_Chur.jpg
+                2026-03-29-0830_zone_A13_Chur.jpg      ← heure locale Zurich
                 ...
               zone_Chur_Isla-T/
                 ...
               zone_globale_A2_A13/
                 ...
 
-          bases/                                                 ← cartes de fond (1× par run)
+          bases/                                       ← cartes de fond (1× par run)
             2026-03-29/
               zone_A13_Chur/
                 2026-03-29-0600_zone_A13_Chur_base.jpg
@@ -117,8 +133,13 @@ jobs:
           EOF
           sed -i 's/^          //' README.md
 
-          git add -A
+          git add README.md
+          git add captures/ 2>/dev/null || true
+          git add bases/ 2>/dev/null || true
           git commit --allow-empty -m "captures init"
+
+          echo "✓ Branche captures prête (contenu : README.md, captures/, bases/)"
+          ls -la
 
           # ── Sauvegarder les cartes de base (1× par run) ──────
           echo ""
@@ -127,7 +148,8 @@ jobs:
           echo "╚════════════════════════════════════════════════════╝"
           python capture.py --save-bases || echo "⚠ Erreur sauvegarde bases"
 
-          git add -A
+          git add captures/ 2>/dev/null || true
+          git add bases/ 2>/dev/null || true
           git commit --amend --allow-empty -m "captures $(TZ=Europe/Zurich date '+%Y-%m-%d %H:%M %Z')" -q
           git push --force origin captures-work:captures -q
           echo "✓ Bases sauvegardées et pushées"
@@ -162,7 +184,8 @@ jobs:
 
             python capture.py || echo "⚠ Erreur capture (cycle continue)"
 
-            git add -A
+            git add captures/ 2>/dev/null || true
+            git add bases/ 2>/dev/null || true
             git commit --amend --allow-empty -m "captures $(TZ=Europe/Zurich date '+%Y-%m-%d %H:%M %Z')" -q
             git push --force origin captures-work:captures -q
             echo "✓ Push OK"
