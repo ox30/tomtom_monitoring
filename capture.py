@@ -47,6 +47,7 @@ ZONES = {
     "zone_A13_Chur":       "https://plan.tomtom.com/en/?p=46.89942,9.32459,9.75z",
     "zone_Chur_Isla-T":    "https://plan.tomtom.com/en/?p=46.84086,9.45618,12.17z",
     "zone_Paris_test":     "https://plan.tomtom.com/en/?p=48.85285,2.40393,11.94z",
+    "zone_SM_A13_2024"     "https://plan.tomtom.com/en/?p=46.86075,9.41862,10.19z",
 }
 
 VIEWPORT_WIDTH  = 1920
