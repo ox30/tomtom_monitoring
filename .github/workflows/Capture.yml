@@ -2,8 +2,16 @@ name: TomTom Traffic Capture (Vector Flow)
 
 on:
   workflow_dispatch:
+    inputs:
+      interval:
+        description: 'Intervalle entre les captures (secondes)'
+        required: false
+        default: '600'
+      cycles:
+        description: 'Nombre de cycles'
+        required: false
+        default: '36'
   schedule:
-    # Toutes les 6h — le workflow tourne ~6h avec des cycles de 10 min
     - cron: '0 0,6,12,18 * * *'
 
 permissions:
@@ -12,7 +20,7 @@ permissions:
 jobs:
   capture:
     runs-on: ubuntu-latest
-    timeout-minutes: 370  # 6h + marge
+    timeout-minutes: 370
 
     steps:
       - name: Checkout main
@@ -32,26 +40,33 @@ jobs:
         run: |
           if [ ! -f capture.py ]; then
             echo "✗ capture.py introuvable dans le repo !"
-            echo "  Assurez-vous que capture.py est pushé sur la branche main."
             exit 1
           fi
 
-      - name: Checkout branche captures
+      - name: Préparer branche captures
         run: |
+          cp capture.py /tmp/capture.py
+          cp requirements.txt /tmp/requirements.txt 2>/dev/null || true
+
           git fetch origin captures || true
           if git rev-parse --verify origin/captures >/dev/null 2>&1; then
             git checkout captures
-            git merge main --no-edit --strategy-option theirs || true
           else
             git checkout -b captures
           fi
 
-      - name: Boucle de capture (10 min × 36 cycles = 6h)
+          cp /tmp/capture.py capture.py
+          cp /tmp/requirements.txt requirements.txt 2>/dev/null || true
+          echo "✓ capture.py présent sur la branche captures"
+
+      - name: Boucle de capture
         env:
           TOMTOM_API_KEY: ${{ secrets.TOMTOM_API_KEY }}
         run: |
-          CYCLES=36
-          echo "═══ Démarrage: ${CYCLES} cycles de 10 min ═══"
+          INTERVAL=${{ github.event.inputs.interval || '600' }}
+          CYCLES=${{ github.event.inputs.cycles || '36' }}
+
+          echo "═══ Démarrage: ${CYCLES} cycles, intervalle ${INTERVAL}s ═══"
 
           for CYCLE in $(seq 1 $CYCLES); do
             echo ""
@@ -59,18 +74,16 @@ jobs:
             
             python capture.py || echo "⚠ Erreur cycle ${CYCLE}"
 
-            # Commit et push
-            git add -A captures/ .base-cache/
+            git add -A captures/ .base-cache/ capture.py
             TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M UTC')
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git commit -m "📸 ${TIMESTAMP}" --allow-empty || true
             git push origin captures || true
 
-            # Attendre 10 min (sauf dernier cycle)
             if [ "$CYCLE" -lt "$CYCLES" ]; then
-              echo "⏳ Prochain cycle dans 10 min..."
-              sleep 600
+              echo "⏳ Prochain cycle dans ${INTERVAL}s..."
+              sleep $INTERVAL
             fi
           done
 
