@@ -781,7 +781,7 @@ def _draw_hatched_tube(draw, coords, colors, outline_w, main_w):
 
 def parse_mvt_tile_incidents(data):
     """
-    Parse une tuile MVT et retourne les features du layer 'Traffic incidents flow'.
+    Parse une tuile MVT et retourne les features du layer 'Traffic incident flow'.
     Même logique que parse_mvt_tile mais pour le layer incidents.
     """
     if not data or len(data) < 2:
@@ -797,8 +797,8 @@ def parse_mvt_tile_incidents(data):
         if isinstance(name, bytes):
             name = name.decode('utf-8', errors='ignore')
 
-        # On traite "Traffic incidents flow" (lignes) — pas les POI (points)
-        if name != "Traffic incidents flow":
+        # On traite "Traffic incident flow" (lignes) — pas les POI (points)
+        if name != "Traffic incident flow":
             continue
 
         extent = layer.get(5, [4096])[0]
