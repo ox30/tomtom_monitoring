@@ -27,6 +27,7 @@ Les paramètres sont ajustables au lancement manuel (**Actions → Run workflow*
 | **Intervalle** | `600` | Secondes entre chaque capture (texte libre) |
 | **Cycles** | `0` | Nombre de captures (0 = boucle jusqu'à 5h45) |
 | **Incidents** | `true` | Afficher les incidents (`true`/`false`) |
+| **Style fond de carte** | `light` | Style de la carte de base (`light`/`main`/`night`) |
 
 ## Stockage (branche `captures`)
 
@@ -67,6 +68,25 @@ ZONES = {
 ```
 
 Pour ajouter une zone : naviguer sur [plan.tomtom.com](https://plan.tomtom.com/), zoomer à la vue souhaitée, copier l'URL, ajouter une ligne dans `ZONES`.
+
+### Style de la carte de base
+
+Trois modes disponibles, sélectionnables au lancement du workflow ou dans le fichier :
+
+| Style | Rendu | Utilisation |
+|-------|-------|-------------|
+| `"light"` | Fond gris clair désaturé | Monitoring trafic (défaut) — le flow et les incidents ressortent clairement |
+| `"main"` | Couleurs standard TomTom | Vue classique avec toutes les couleurs de la carte |
+| `"night"` | Mode sombre TomTom | Affichage en salle de contrôle, faible luminosité |
+
+Le mode "light" télécharge la carte `main` puis applique une transformation Pillow (désaturation + éclaircissement). Les paramètres sont ajustables :
+
+```python
+BASE_MAP_STYLE         = os.environ.get("BASE_MAP_STYLE", "light")
+LIGHT_SATURATION       = 0.05    # 0.0 = gris pur, 1.0 = couleurs originales
+LIGHT_BRIGHTNESS       = 1.1     # > 1.0 = plus clair
+LIGHT_CONTRAST         = 1.5     # > 1.0 = plus contrasté
+```
 
 ### Filtrage des routes par zoom
 
@@ -264,6 +284,7 @@ Le quota gratuit TomTom est de **50'000 requêtes/jour**. Un avertissement s'aff
 
 ```bash
 export TOMTOM_API_KEY="votre_clé"
+export BASE_MAP_STYLE="light"          # ou "main" ou "night"
 pip install requests Pillow
 python capture.py              # un cycle flow + incidents
 python capture.py --save-bases # sauvegarder les cartes de base
