@@ -241,13 +241,13 @@ BASES_DIR       = Path("bases")       # Cartes de base 1× par run
 CACHE_DIR       = Path(".base-cache") # Cache local (pas commité)
 TIMEZONE        = ZoneInfo("Europe/Zurich")
 
-# Style de la carte de base
+# Style de la carte de base — configurable via env BASE_MAP_STYLE au lancement
 # "main"  → couleurs standard TomTom (défaut API)
 # "light" → fond gris clair désaturé (comme plan.tomtom.com mode Light)
 # "night" → mode nuit TomTom (sombre)
 #
 # Paramètres du mode "light" — ajustez pour un fond plus/moins contrasté :
-BASE_MAP_STYLE         = "light"
+BASE_MAP_STYLE         = os.environ.get("BASE_MAP_STYLE", "light")
 LIGHT_SATURATION       = 0.05    # 0.0 = gris pur, 1.0 = couleurs originales
 LIGHT_BRIGHTNESS       = 1.1     # > 1.0 = plus clair, 1.0 = pas de changement
 LIGHT_CONTRAST         = 1.5    # < 1.0 = moins contrasté (plus doux), 1.0 = original
