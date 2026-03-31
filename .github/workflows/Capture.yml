@@ -75,7 +75,7 @@ jobs:
           INTERVAL_SEC: ${{ github.event.inputs.interval || '600' }}
           MAX_CYCLES: ${{ github.event.inputs.cycles || '0' }}
           INCIDENTS_ENABLED: ${{ github.event.inputs.incidents || 'true' }}
-          BASE_MAP_STYLE: ${{ github.event.inputs.map_style || 'light' }}
+          BASE_MAP_STYLE: ${{ github.event.inputs.map_style || 'night' }}
         run: |
           set -euo pipefail
 
