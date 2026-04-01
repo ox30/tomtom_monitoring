@@ -329,6 +329,32 @@ def get_traffic_category(tags):
 
 
 # ─── Charte incidents TomTom plan ─────────────────────────────────────────────
+# Chaque icon_category est affectée à un style visuel et une priorité de dessin.
+# Priorité : plus le chiffre est élevé, plus l'élément est dessiné PAR-DESSUS.
+# Modifiez ces dictionnaires pour ajuster l'apparence.
+#
+# Styles disponibles :
+#   "hatched_red"  → Tube losanges rouge/blanc (fermetures)
+#   "hatched_grey" → Tube losanges gris/blanc (travaux, météo…)
+#   "solid"        → Tube plein, couleur selon magnitude (bouchons…)
+#   None           → Ne pas afficher cette catégorie
+#
+# icon_category :
+#   0  = Unknown
+#   1  = Accident
+#   2  = Fog (brouillard)
+#   3  = Dangerous Conditions
+#   4  = Rain (pluie)
+#   5  = Ice (verglas)
+#   6  = Jam (bouchon)
+#   7  = Lane Closed (voie fermée)
+#   8  = Road Closed (route fermée)
+#   9  = Road Works (travaux)
+#   10 = Wind (vent)
+#   11 = Flooding (inondation)
+#   13 = Cluster (mix)
+#   14 = Broken Down Vehicle (véhicule en panne)
+
 INCIDENT_STYLE = {
     0:  "hatched_grey",   # Unknown
     1:  "hatched_grey",   # Accident
@@ -346,34 +372,42 @@ INCIDENT_STYLE = {
     14: "hatched_grey",   # Broken Down Vehicle
 }
 
+# Priorité de dessin — plus le chiffre est élevé, plus c'est dessiné par-dessus.
+# Ajustez pour changer l'ordre de superposition.
 INCIDENT_PRIORITY = {
-    0:  10,
-    1:  50,
-    2:  20,
-    3:  20,
-    4:  20,
-    5:  25,
-    6:  60,
-    7:  55,
-    8:  100,
-    9:  30,
-    10: 20,
-    11: 25,
-    13: 40,
-    14: 45,
+    0:  10,     # Unknown
+    1:  50,     # Accident
+    2:  20,     # Fog
+    3:  20,     # Dangerous Conditions
+    4:  20,     # Rain
+    5:  25,     # Ice
+    6:  60,     # Jam — par-dessus les hachurés
+    7:  55,     # Lane Closed
+    8:  100,    # Road Closed — priorité maximale
+    9:  30,     # Road Works
+    10: 20,     # Wind
+    11: 25,     # Flooding
+    13: 40,     # Cluster
+    14: 45,     # Broken Down Vehicle
 }
 
+# Couleurs des tubes pleins (solid) par magnitude
+# magnitude: (outline_color, main_color) — RGBA
 INCIDENT_MAGNITUDE_COLORS = {
-    0: ((140, 60, 60, 255),  (200, 100, 100, 255)),
-    1: ((170, 60, 20, 255),  (220, 120, 60, 255)),
-    2: ((160, 20, 10, 255),  (210, 50, 30, 255)),
-    3: ((120, 5, 5, 255),    (170, 10, 10, 255)),
-    4: ((100, 10, 10, 255),  (150, 15, 15, 255)),
+    0: ((140, 60, 60, 255),  (200, 100, 100, 255)),   # Unknown — rouge clair
+    1: ((170, 60, 20, 255),  (220, 120, 60, 255)),    # Minor — orange
+    2: ((160, 20, 10, 255),  (210, 50, 30, 255)),     # Moderate — rouge moyen
+    3: ((120, 5, 5, 255),    (170, 10, 10, 255)),     # Major — rouge foncé
+    4: ((100, 10, 10, 255),  (150, 15, 15, 255)),     # Indefinite — rouge très foncé
 }
 
-HATCHED_RED_COLORS  = ((190, 30, 30, 255), (216, 216, 216, 255))
-HATCHED_GREY_COLORS = ((122, 128, 144, 255), (224, 224, 224, 255))
+# Couleurs des tubes hachurés — (outline/squares color, grey fill color)
+# Motif : contour fin coloré, fond gris clair, carrés colorés pleine hauteur
+# Ratio : 1/3 carré coloré + 2/3 rectangle gris
+HATCHED_RED_COLORS  = ((190, 30, 30, 255), (216, 216, 216, 255))   # rouge + gris clair
+HATCHED_GREY_COLORS = ((122, 128, 144, 255), (224, 224, 224, 255)) # gris-bleu + gris très clair
 
+# Épaisseur des incidents par type de route (légèrement plus épais que le flow)
 INCIDENT_WIDTH = {
     "Motorway":           (9, 8),
     "International road": (8, 8),
@@ -386,15 +420,23 @@ INCIDENT_WIDTH = {
 }
 INCIDENT_DEFAULT_WIDTH = (8, 7)
 
-# ─── Décalage directionnel ────────────────────────────────────────────────────
-FLOW_OFFSET     = 0.5
-FLOW_VIS_OUTLINE = 0.55
-FLOW_VIS_MAIN    = 0.5
+# ─── Décalage directionnel (tube côté droit du sens de circulation) ───────────
+# Chaque tube est décalé vers la droite et affiné pour séparer les deux sens.
+# Multiplicateurs appliqués à l'épaisseur d'origine (outline_w / main_w).
+#
+# offset  = distance du centre de la route (plus grand → plus écarté)
+# outline = épaisseur de la bordure visible
+# main    = épaisseur de la couleur visible
 
-INCIDENT_OFFSET      = 0.35
-INCIDENT_VIS_OUTLINE = 0.65
-INCIDENT_VIS_MAIN    = 0.6
+FLOW_OFFSET     = 0.5     # Décalage flow (× outline_w)
+FLOW_VIS_OUTLINE = 0.55   # Bordure visible flow (× outline_w)
+FLOW_VIS_MAIN    = 0.5    # Couleur visible flow (× main_w)
 
+INCIDENT_OFFSET      = 0.35   # Décalage incidents (× outline_w) — moins que flow → dépasse
+INCIDENT_VIS_OUTLINE = 0.65   # Bordure visible incidents (× outline_w)
+INCIDENT_VIS_MAIN    = 0.6    # Couleur visible incidents (× main_w)
+
+# Activation des incidents — peut être désactivé via env INCIDENTS_ENABLED=false
 INCIDENTS_ENABLED = os.environ.get("INCIDENTS_ENABLED", "true").lower() != "false"
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -427,12 +469,15 @@ def get_tile_grid(lat, lon, zoom, width, height, tile_size):
     """
     center_tx, center_ty = lat_lon_to_tile(lat, lon, zoom)
 
+    # Pixel du centre dans l'espace global des tuiles
     center_px = center_tx * tile_size
     center_py = center_ty * tile_size
 
+    # Coin supérieur gauche du viewport en pixels globaux
     origin_px = center_px - width / 2
     origin_py = center_py - height / 2
 
+    # Range de tuiles
     tile_x_min = int(math.floor(origin_px / tile_size))
     tile_x_max = int(math.floor((origin_px + width - 1) / tile_size))
     tile_y_min = int(math.floor(origin_py / tile_size))
@@ -447,6 +492,7 @@ def get_tile_grid(lat, lon, zoom, width, height, tile_size):
 
     return tiles, origin_px, origin_py
 
+# ─── Décalage directionnel (tube côté droit) ─────────────────────────────────
 
 def _offset_polyline(coords, offset_px):
     """
@@ -459,13 +505,17 @@ def _offset_polyline(coords, offset_px):
     n = len(coords)
 
     for i in range(n):
+        # Calculer la direction moyenne au point i
         if i == 0:
+            # Premier point : direction du premier segment
             dx = coords[1][0] - coords[0][0]
             dy = coords[1][1] - coords[0][1]
         elif i == n - 1:
+            # Dernier point : direction du dernier segment
             dx = coords[n-1][0] - coords[n-2][0]
             dy = coords[n-1][1] - coords[n-2][1]
         else:
+            # Point intermédiaire : moyenne des deux segments adjacents
             dx = coords[i+1][0] - coords[i-1][0]
             dy = coords[i+1][1] - coords[i-1][1]
 
@@ -474,12 +524,15 @@ def _offset_polyline(coords, offset_px):
             result.append(coords[i])
             continue
 
+        # Normaliser
         ux = dx / length
         uy = dy / length
 
+        # Perpendiculaire droite en screen coords (Y vers le bas)
         nx = -uy
         ny = ux
 
+        # Décaler le point
         new_x = coords[i][0] + nx * offset_px
         new_y = coords[i][1] + ny * offset_px
         result.append((int(round(new_x)), int(round(new_y))))
@@ -489,7 +542,7 @@ def _offset_polyline(coords, offset_px):
 
 # ─── API calls ────────────────────────────────────────────────────────────────
 
-counter = 0
+counter = 0  # Compteur de requêtes API
 
 
 def api_get(url, binary=False):
@@ -507,25 +560,39 @@ def _apply_light_style(img):
     """
     Transforme une image carte en version "Light" (fond gris clair désaturé).
     """
+  
+    # Travailler en RGB pour les transformations
     rgb = img.convert("RGB")
+
+    # 1. Désaturer (retirer les couleurs)
     enhancer = ImageEnhance.Color(rgb)
     rgb = enhancer.enhance(LIGHT_SATURATION)
+
+    # 2. Éclaircir
     enhancer = ImageEnhance.Brightness(rgb)
     rgb = enhancer.enhance(LIGHT_BRIGHTNESS)
+
+    # 3. Réduire le contraste (adoucir)
     enhancer = ImageEnhance.Contrast(rgb)
     rgb = enhancer.enhance(LIGHT_CONTRAST)
+
+    # Reconvertir en RGBA
     return rgb.convert("RGBA")
 
 
 def download_base_image(lat, lon, zoom, width, height, api_key):
     """
     Télécharge la carte de base via l'API Static Image de TomTom.
+    Applique le style configuré (main, light, night).
     width/height sont les dimensions de rendu (peuvent être supersamplées).
     L'API est limitée à 8192×8192 — on clamp et on redimensionne si nécessaire.
     """
+
+    # Limiter à 8192x8192 (max API)
     w = min(width, 8192)
     h = min(height, 8192)
 
+    # Style API : "main" ou "night" (pas de "light" côté API)
     api_style = "night" if BASE_MAP_STYLE == "night" else "main"
 
     url = (
@@ -542,8 +609,10 @@ def download_base_image(lat, lon, zoom, width, height, api_key):
     data = api_get(url, binary=True)
     if data:
         img = Image.open(BytesIO(data)).convert("RGBA")
+        # Redimensionner si nécessaire
         if img.size != (width, height):
             img = img.resize((width, height), Image.LANCZOS)
+        # Appliquer le style "light" (désaturation + éclaircissement)
         if BASE_MAP_STYLE == "light":
             img = _apply_light_style(img)
         return img
@@ -558,6 +627,7 @@ def download_vector_flow(lat, lon, zoom, width, height, api_key, tile_render_siz
                        En mode supersampling, passer TILE_SIZE * SUPERSAMPLE.
                        Les requêtes API restent identiques (zoom/x/y inchangés).
     """
+    # Déterminer les types de route à afficher pour ce zoom
     if tile_render_size is None:
         tile_render_size = TILE_SIZE
 
@@ -568,6 +638,7 @@ def download_vector_flow(lat, lon, zoom, width, height, api_key, tile_render_siz
         lat, lon, zoom, width, height, tile_render_size
     )
 
+    # Image transparente pour le flow
     flow_img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(flow_img)
 
@@ -576,6 +647,7 @@ def download_vector_flow(lat, lon, zoom, width, height, api_key, tile_render_siz
     n_downloaded = 0
 
     for tile_x, tile_y, px_off, py_off in tiles:
+        # Clamp tile coords
         max_tile = 2 ** zoom - 1
         if tile_y < 0 or tile_y > max_tile:
             continue
@@ -597,6 +669,7 @@ def download_vector_flow(lat, lon, zoom, width, height, api_key, tile_render_siz
 
         features = parse_mvt_tile(data)
 
+        # Trier : dessiner les routes fluides d'abord, congestionnées par-dessus
         def sort_key(f):
             cat = get_traffic_category(f['tags'])
             order = {"free": 0, "moderate": 1, "slow": 2, "very_slow": 3, "closed": 4}
@@ -610,6 +683,7 @@ def download_vector_flow(lat, lon, zoom, width, height, api_key, tile_render_siz
             category = get_traffic_category(tags)
             outline_color, main_color = TRAFFIC_COLORS[category]
 
+            # Épaisseur selon le type de route
             road_type = tags.get('road_type', '')
             outline_w, main_w = LINE_WIDTH.get(road_type, DEFAULT_WIDTH)
 
@@ -617,12 +691,14 @@ def download_vector_flow(lat, lon, zoom, width, height, api_key, tile_render_siz
                 if len(line) < 2:
                     continue
 
+                # Convertir coords tuile (0-extent) en pixels viewport
                 pixel_line = []
                 for tx_coord, ty_coord in line:
                     px = px_off + (tx_coord / extent) * tile_render_size
                     py = py_off + (ty_coord / extent) * tile_render_size
                     pixel_line.append((px, py))
 
+                # Simplifier : ignorer les segments hors viewport (avec marge)
                 margin = 50
                 all_outside = all(
                     x < -margin or x > width + margin or y < -margin or y > height + margin
@@ -633,16 +709,21 @@ def download_vector_flow(lat, lon, zoom, width, height, api_key, tile_render_siz
 
                 n_features += 1
 
+                # Coordonnées pixel
                 coords = [(int(round(x)), int(round(y))) for x, y in pixel_line]
 
                 if len(coords) >= 2:
+                    # Décaler le tube vers la droite du sens de circulation
                     offset_px = max(1, outline_w * FLOW_OFFSET)
                     shifted = _offset_polyline(coords, offset_px)
 
+                    # Largeurs visibles
                     vis_outline = max(1, int(math.ceil(outline_w * FLOW_VIS_OUTLINE)))
                     vis_main = max(1, int(math.ceil(main_w * FLOW_VIS_MAIN)))
 
+                    # Outline (bordure sombre)
                     draw.line(shifted, fill=outline_color, width=vis_outline, joint="curve")
+                    # Main (couleur vive)
                     draw.line(shifted, fill=main_color, width=vis_main, joint="curve")
 
     print(f"  🚗 Flow: {n_downloaded}/{n_tiles} tuiles, {n_features} segments"
@@ -653,6 +734,10 @@ def download_vector_flow(lat, lon, zoom, width, height, api_key, tile_render_siz
 def download_incidents(lat, lon, zoom, width, height, api_key, tile_render_size=None):
     """
     Télécharge les incidents via Vector Incident Tiles (.pbf) et les dessine.
+    trie par priorité (INCIDENT_PRIORITY), puis dessine :
+      - hatched_red  : tube losanges rouge/blanc (fermetures)
+      - hatched_grey : tube losanges gris/blanc (travaux, météo)
+      - solid        : tube plein couleur par magnitude (bouchons)
 
     tile_render_size : même principe que pour download_vector_flow.
     """
@@ -669,6 +754,7 @@ def download_incidents(lat, lon, zoom, width, height, api_key, tile_render_size=
     n_tiles = len(tiles)
     n_downloaded = 0
 
+    # Phase 1 : Collecter tous les incidents
     all_incidents = []
 
     for tile_x, tile_y, px_off, py_off in tiles:
@@ -695,6 +781,7 @@ def download_incidents(lat, lon, zoom, width, height, api_key, tile_render_size=
             tags = feat['tags']
             extent = feat.get('extent', 4096)
 
+            # Déterminer l'icon_category
             icon_cat = None
             for key, val in tags.items():
                 if key == 'icon_category' or key.startswith('icon_category_'):
@@ -746,16 +833,21 @@ def download_incidents(lat, lon, zoom, width, height, api_key, tile_render_size=
                 all_incidents.append((priority, style, icon_cat, magnitude,
                                       outline_w, main_w, coords))
 
+    # Phase 2 : Trier par priorité (basse d'abord → haute dessinée par-dessus)
     all_incidents.sort(key=lambda x: x[0])
 
+    # Phase 3 : Dessiner dans l'ordre, décalé à droite du sens de circulation
+    # Les incidents sont légèrement moins décalés que le flow → ils "dépassent"
     n_hatched_red = 0
     n_hatched_grey = 0
     n_solid = 0
 
     for priority, style, icon_cat, magnitude, outline_w, main_w, coords in all_incidents:
+        # Décalage directionnel
         offset_px = max(1, outline_w * INCIDENT_OFFSET)
         shifted = _offset_polyline(coords, offset_px)
 
+        # Largeurs visibles
         vis_outline = max(1, int(math.ceil(outline_w * INCIDENT_VIS_OUTLINE)))
         vis_main = max(1, int(math.ceil(main_w * INCIDENT_VIS_MAIN)))
 
@@ -789,14 +881,21 @@ def _draw_hatched_tube(draw, coords, colors, outline_w, main_w):
     if len(coords) < 2:
         return
 
+    # 1. Contour fin coloré (outline)
     draw.line(coords, fill=color, width=outline_w, joint="curve")
+
+    # 2. Fond gris clair (remplissage du tube)
     draw.line(coords, fill=grey_fill, width=main_w, joint="curve")
 
+    # 3. Carrés colorés le long du chemin
+    # Taille du carré = main_w (pleine hauteur, aussi large que haut)
     square_size = max(2, main_w)
-    unit_size = square_size * 3.0
+    # Espacement : 1/3 carré + 2/3 vide = le carré occupe 1/3 de chaque unité
+    unit_size = square_size * 3.0  # distance entre le début d'un carré et le suivant
     half_sq = square_size / 2.0
     half_w = main_w / 2.0
 
+    # Parcourir le chemin et placer des carrés
     seg_idx = 0
     seg_consumed = half_sq
 
@@ -993,6 +1092,8 @@ def capture_zone(zone_name, zone_url, api_key, now):
 def save_bases(api_key):
     """
     Télécharge et archive les cartes de base — appelée 1× par run.
+    Structure : bases/YYYY-MM-DD/zone_name/YYYY-MM-DD-HHMM_zone_name_base.jpg
+    Met aussi à jour le cache local (.base-cache/) pour les cycles suivants.
     """
     now = datetime.now(TIMEZONE)
     date_str = now.strftime("%Y-%m-%d")
@@ -1059,17 +1160,22 @@ def clear_stale_cache():
 
 # ─── Budget API ───────────────────────────────────────────────────────────────
 
-DAILY_QUOTA = 50_000
-CYCLES_PER_RUN = 36
-RUNS_PER_DAY = 4
+DAILY_QUOTA = 50_000  # Requêtes gratuites TomTom par jour
+CYCLES_PER_RUN = 36   # 6h / 10 min
+RUNS_PER_DAY = 4      # cron toutes les 6h
 
 
 def _count_tiles_for_zone(lat, lon, zoom):
+    """Compte le nombre de tuiles nécessaires pour couvrir le viewport."""
     tiles, _, _ = get_tile_grid(lat, lon, zoom, VIEWPORT_WIDTH, VIEWPORT_HEIGHT, TILE_SIZE)
     return len(tiles)
 
 
 def print_budget_report():
+    """
+    Affiche le rapport de consommation API estimée.
+    Appelé au début de chaque run.
+    """
     print(f"\n{'─'*65}")
     print("📊 BUDGET API — Estimation de consommation")
     print(f"{'─'*65}")
@@ -1082,9 +1188,9 @@ def print_budget_report():
         n_tiles = _count_tiles_for_zone(lat, lon, zoom)
         road_types = ROAD_TYPES_BY_ZOOM.get(zoom, [0, 1, 2, 3])
 
-        flow = n_tiles
-        inc = n_tiles
-        base = 1
+        flow = n_tiles      # vector flow tiles
+        inc = n_tiles        # vector incident tiles
+        base = 1             # static image (1× par run)
         per_cycle = flow + inc
 
         print(f"  {name} (zoom={zoom}, roadTypes={road_types})")
@@ -1098,6 +1204,7 @@ def print_budget_report():
     pct = daily_cost * 100 / DAILY_QUOTA
     remaining = DAILY_QUOTA - daily_cost
 
+    # Combien de zones supplémentaires possibles
     if total_per_cycle > 0:
         avg_per_zone = total_per_cycle // len(ZONES)
         extra_zones = remaining // (avg_per_zone * CYCLES_PER_RUN * RUNS_PER_DAY) if avg_per_zone > 0 else 0
@@ -1141,19 +1248,23 @@ if __name__ == "__main__":
     now = datetime.now(TIMEZONE)
     print(f"═══ TomTom Vector Flow Capture — {now.strftime('%Y-%m-%d %H:%M %Z')} ═══")
 
+    # Afficher les zones configurées
     print("\nZones configurées:")
     for name, url in ZONES.items():
         lat, lon, zoom = parse_zone_url(url)
         road_types = ROAD_TYPES_BY_ZOOM.get(zoom, [0, 1, 2, 3])
         print(f"  ✓ {name}: lat={lat} lon={lon} zoom={zoom} roadTypes={road_types}")
 
+    # Rapport de budget au début de chaque exécution
     print_budget_report()
 
     clear_stale_cache()
 
     if args.save_bases:
+        # Mode base uniquement — 1× par run
         save_bases(api_key)
     else:
+        # Mode cycle — capture flow + incidents
         counter = 0
         errors = 0
 
@@ -1166,6 +1277,7 @@ if __name__ == "__main__":
                 traceback.print_exc()
                 errors += 1
 
+        # Résumé
         print(f"\n{'═'*60}")
         print(f"Résumé: {len(ZONES) - errors}/{len(ZONES)} zones OK")
         print(f"Requêtes API: {counter}")
