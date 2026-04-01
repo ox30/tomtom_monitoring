@@ -281,18 +281,18 @@ ROAD_TYPES_BY_ZOOM = {
 # Épaisseur des lignes par type de route (outline, main)
 # Reproduit la hiérarchie visuelle de plan.tomtom.com
 LINE_WIDTH = {
-    "Motorway":         (5, 4),
-    "International road": (4, 4),
-    "Major road":       (4, 3),
-    "Secondary road":   (3, 3),
-    "Connecting road":  (3, 2),
-    "Major local road": (2, 2),
-    "Local road":       (2, 1),
-    "Minor local road": (1, 1),
-    "Non public road":  (0, 1),
-    "Parking road":     (0, 1),
+    "Motorway":         (6, 5),
+    "International road": (5, 5),
+    "Major road":       (5, 4),
+    "Secondary road":   (4, 4),
+    "Connecting road":  (4, 3),
+    "Major local road": (3, 3),
+    "Local road":       (3, 2),
+    "Minor local road": (2, 2),
+    "Non public road":  (1, 2),
+    "Parking road":     (1, 1),
 }
-DEFAULT_WIDTH = (4, 3)
+DEFAULT_WIDTH = (5, 4)
 
 # ─── Charte visuelle TomTom relative0 adaptée ────────────────────────────────────────
 # Couleurs adapté extraites de la documentation officielle TomTom
@@ -375,16 +375,16 @@ HATCHED_RED_COLORS  = ((190, 30, 30, 255), (216, 216, 216, 255))
 HATCHED_GREY_COLORS = ((122, 128, 144, 255), (224, 224, 224, 255))
 
 INCIDENT_WIDTH = {
-    "Motorway":           (6, 5),
-    "International road": (5, 5),
-    "Major road":         (5, 4),
-    "Secondary road":     (4, 4),
-    "Connecting road":    (4, 3),
-    "Major local road":   (3, 3),
-    "Local road":         (3, 2),
-    "Minor local road":   (2, 2),
+    "Motorway":           (7, 6),
+    "International road": (6, 6),
+    "Major road":         (6, 5),
+    "Secondary road":     (5, 5),
+    "Connecting road":    (5, 4),
+    "Major local road":   (4, 4),
+    "Local road":         (4, 3),
+    "Minor local road":   (3, 3),
 }
-INCIDENT_DEFAULT_WIDTH = (5, 4)
+INCIDENT_DEFAULT_WIDTH = (6, 5)
 
 # ─── Décalage directionnel ────────────────────────────────────────────────────
 FLOW_OFFSET     = 0.5
