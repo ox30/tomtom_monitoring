@@ -43,6 +43,10 @@ ZONES = {
         "url": "https://plan.tomtom.com/en/?p=46.45552,8.76656,11z",
         "annotations": True,
     },
+    "zone_globale_A2_A13": {
+        "url": "https://plan.tomtom.com/en/?p=46.77047,8.61182,8z",
+        "annotations": False,
+    },
 }
 
 # ─── Dimensions et chemins ────────────────────────────────────────────────────
