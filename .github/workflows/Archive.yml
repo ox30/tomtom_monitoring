@@ -151,16 +151,22 @@ jobs:
             --progress --stats-one-line
           echo "✓ Journal synchronisé sur Proton Drive"
 
-      - name: Publier le journal sur GitHub
+      - name: Publier le journal sur GitHub (main)
         run: |
+          # Repartir de main
+          git fetch origin main --depth=1
+          git checkout origin/main -- . 2>/dev/null || true
+
+          # Copier le journal
           cp /tmp/log/archive_log.json archive_log.json
 
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           git add archive_log.json
-          git commit -m "📋 Archive log — ${{ env.DATE }}" || echo "Pas de changement"
-          git push origin HEAD:captures || echo "⚠ Push GitHub échoué (conflit probable avec capture en cours — Proton fait foi)"
+          git diff --cached --quiet && echo "Pas de changement" || \
+            (git commit -m "📋 Archive log — ${{ env.DATE }}" && \
+             git push origin HEAD:main)
 
       - name: Nettoyage rclone config
         if: always()
