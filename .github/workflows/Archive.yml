@@ -55,7 +55,6 @@ jobs:
 
       - name: Créer le ZIP
         run: |
-          cd captures/
           zip -r /tmp/captures-${{ env.DATE }}.zip ${{ env.DATE }}/
           SIZE_BYTES=$(stat --format=%s /tmp/captures-${{ env.DATE }}.zip)
           SIZE_HUMAN=$(du -h /tmp/captures-${{ env.DATE }}.zip | cut -f1)
