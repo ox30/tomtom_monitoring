@@ -91,6 +91,8 @@ jobs:
 
       - name: Journalisation
         run: |
+          mkdir -p /tmp/log
+
           # Récupérer le journal existant depuis Proton Drive
           rclone copy proton:A13-A2/archive_log.json /tmp/log/ 2>/dev/null || true
 
