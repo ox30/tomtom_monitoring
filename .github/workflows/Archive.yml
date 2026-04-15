@@ -1,0 +1,164 @@
+name: Archive to Proton Drive
+
+on:
+  schedule:
+    # Chaque nuit à 2h00 UTC (4h00 CEST)
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Date à archiver (YYYY-MM-DD, défaut = hier)"
+        required: false
+        default: ""
+      retention_days:
+        description: "Rétention GitHub en jours"
+        required: false
+        default: "3"
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Déterminer la date
+        run: |
+          if [ -n "${{ github.event.inputs.date }}" ]; then
+            echo "DATE=${{ github.event.inputs.date }}" >> $GITHUB_ENV
+          else
+            echo "DATE=$(date -u -d 'yesterday' +%Y-%m-%d)" >> $GITHUB_ENV
+          fi
+          echo "RETENTION=${{ github.event.inputs.retention_days || '3' }}" >> $GITHUB_ENV
+          echo "TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
+
+      - name: Checkout branche captures
+        uses: actions/checkout@v4
+        with:
+          ref: captures
+          fetch-depth: 1
+
+      - name: Vérifier que le dossier existe
+        run: |
+          if [ ! -d "captures/${{ env.DATE }}" ]; then
+            echo "❌ Pas de captures pour ${{ env.DATE }}"
+            exit 0
+          fi
+          echo "✓ Dossier captures/${{ env.DATE }} trouvé"
+          du -sh captures/${{ env.DATE }}/
+
+          # Compter zones et images
+          ZONES=$(ls captures/${{ env.DATE }}/ | wc -l)
+          IMAGES=$(find captures/${{ env.DATE }}/ -name "*.jpg" | wc -l)
+          echo "ZONES=${ZONES}" >> $GITHUB_ENV
+          echo "IMAGES=${IMAGES}" >> $GITHUB_ENV
+
+      - name: Créer le ZIP
+        run: |
+          cd captures/
+          zip -r /tmp/captures-${{ env.DATE }}.zip ${{ env.DATE }}/
+          SIZE_BYTES=$(stat --format=%s /tmp/captures-${{ env.DATE }}.zip)
+          SIZE_HUMAN=$(du -h /tmp/captures-${{ env.DATE }}.zip | cut -f1)
+          echo "📦 ZIP créé : captures-${{ env.DATE }}.zip (${SIZE_HUMAN})"
+          echo "ZIP_SIZE=${SIZE_HUMAN}" >> $GITHUB_ENV
+          echo "ZIP_SIZE_BYTES=${SIZE_BYTES}" >> $GITHUB_ENV
+
+      - name: Installer rclone
+        run: |
+          curl -sO https://downloads.rclone.org/current/rclone-current-linux-amd64.deb
+          sudo dpkg -i rclone-current-linux-amd64.deb
+          rm rclone-current-linux-amd64.deb
+
+      - name: Configurer rclone
+        run: |
+          mkdir -p ~/.config/rclone
+          echo "${{ secrets.RCLONE_CONFIG_BASE64 }}" | base64 -d > ~/.config/rclone/rclone.conf
+
+      - name: Upload vers Proton Drive
+        run: |
+          echo "🚀 Upload captures-${{ env.DATE }}.zip vers Proton Drive..."
+          rclone copy /tmp/captures-${{ env.DATE }}.zip proton:A13-A2/ \
+            --progress --stats-one-line
+          echo "✅ Archivé sur Proton Drive : A13-A2/captures-${{ env.DATE }}.zip"
+
+      - name: Vérifier l'upload
+        run: |
+          if rclone ls proton:A13-A2/captures-${{ env.DATE }}.zip; then
+            echo "✓ Fichier vérifié sur Proton Drive"
+            echo "VERIFIED=true" >> $GITHUB_ENV
+          else
+            echo "⚠ Vérification échouée"
+            echo "VERIFIED=false" >> $GITHUB_ENV
+          fi
+
+      - name: Journalisation
+        run: |
+          # Récupérer le journal existant depuis Proton Drive
+          rclone copy proton:A13-A2/archive_log.json /tmp/log/ 2>/dev/null || true
+
+          # Créer le fichier s'il n'existe pas
+          if [ ! -f /tmp/log/archive_log.json ]; then
+            echo '[]' > /tmp/log/archive_log.json
+          fi
+
+          # Ajouter l'entrée du jour
+          python3 -c "
+          import json
+          log_path = '/tmp/log/archive_log.json'
+          with open(log_path) as f:
+              log = json.load(f)
+
+          entry = {
+              'date': '${{ env.DATE }}',
+              'archived_at': '${{ env.TIMESTAMP }}',
+              'zones': int('${{ env.ZONES }}'),
+              'images': int('${{ env.IMAGES }}'),
+              'zip_file': 'captures-${{ env.DATE }}.zip',
+              'zip_size_bytes': int('${{ env.ZIP_SIZE_BYTES }}'),
+              'zip_size': '${{ env.ZIP_SIZE }}',
+              'verified': ${{ env.VERIFIED == 'true' && 'True' || 'False' }},
+              'trigger': '${{ github.event_name }}'
+          }
+
+          # Éviter les doublons (si relancé manuellement)
+          log = [e for e in log if e.get('date') != '${{ env.DATE }}']
+          log.append(entry)
+          log.sort(key=lambda e: e['date'])
+
+          with open(log_path, 'w') as f:
+              json.dump(log, f, indent=2)
+
+          print(f'📋 Journal mis à jour : {len(log)} entrées')
+          "
+
+          # Renvoyer le journal sur Proton Drive
+          rclone copy /tmp/log/archive_log.json proton:A13-A2/ \
+            --progress --stats-one-line
+          echo "✓ Journal synchronisé sur Proton Drive"
+
+      - name: Publier le journal sur GitHub
+        run: |
+          cp /tmp/log/archive_log.json archive_log.json
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add archive_log.json
+          git commit -m "📋 Archive log — ${{ env.DATE }}" || echo "Pas de changement"
+          git push origin HEAD:captures || echo "⚠ Push GitHub échoué (conflit probable avec capture en cours — Proton fait foi)"
+
+      - name: Nettoyage rclone config
+        if: always()
+        run: rm -f ~/.config/rclone/rclone.conf
+
+      - name: Résumé
+        run: |
+          echo "════════════════════════════════════════"
+          echo "📋 Archivage du ${{ env.DATE }}"
+          echo "   Zones : ${{ env.ZONES }}"
+          echo "   Images : ${{ env.IMAGES }}"
+          echo "   Taille ZIP : ${{ env.ZIP_SIZE }}"
+          echo "   Vérifié : ${{ env.VERIFIED }}"
+          echo "   Destination : proton:A13-A2/"
+          echo "   Déclencheur : ${{ github.event_name }}"
+          echo "════════════════════════════════════════"
