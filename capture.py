@@ -424,12 +424,30 @@ def download_base_image(lat, lon, zoom, width, height, api_key):
     return None
 
 
-def download_vector_flow(lat, lon, zoom, width, height, api_key, tile_render_size=None):
-    """Télécharge et dessine les tuiles vectorielles de trafic flow (.pbf)."""
+def resolve_road_types(zone_config, zoom):
+    """
+    Retourne la liste effective des indices de types de routes pour une zone
+    (appliqué uniquement au flow via l'API TomTom).
+
+    Priorité :
+      1. Clé 'road_types_override' dans zone_config → surcharge explicite
+      2. ROAD_TYPES_BY_ZOOM[zoom]                   → fallback par zoom
+      3. [0, 1, 2, 3]                                → fallback par défaut
+    """
+    if "road_types_override" in zone_config:
+        return zone_config["road_types_override"]
+    return ROAD_TYPES_BY_ZOOM.get(zoom, [0, 1, 2, 3])
+
+
+def download_vector_flow(lat, lon, zoom, width, height, api_key, road_types, tile_render_size=None):
+    """Télécharge et dessine les tuiles vectorielles de trafic flow (.pbf).
+
+    road_types : liste d'indices de types de routes à capturer, résolue en amont
+                 par resolve_road_types() (surcharge par zone ou fallback zoom).
+    """
     if tile_render_size is None:
         tile_render_size = TILE_SIZE
 
-    road_types = ROAD_TYPES_BY_ZOOM.get(zoom, [0, 1, 2, 3])
     road_types_param = "[" + ",".join(str(r) for r in road_types) + "]"
 
     tiles, origin_px, origin_py = get_tile_grid(
@@ -1002,9 +1020,13 @@ def capture_zone(zone_name, zone_config, api_key, now):
     want_annotations = zone_config.get("annotations", False)
 
     lat, lon, zoom = parse_zone_url(zone_url)
+    road_types = resolve_road_types(zone_config, zoom)
+    rt_source = "override zone" if "road_types_override" in zone_config else f"fallback zoom {zoom}"
+
     print(f"\n{'─'*60}")
     print(f"[{zone_name}] lat={lat} lon={lon} zoom={zoom}"
           f" annotations={'ON' if want_annotations else 'OFF'}")
+    print(f"  📋 roadTypes flow={road_types} ({rt_source})")
 
     date_str = now.strftime("%Y-%m-%d")
     time_str = now.strftime("%H%M")
@@ -1037,7 +1059,7 @@ def capture_zone(zone_name, zone_config, api_key, now):
 
     # 2. Traffic Flow
     flow_img = download_vector_flow(
-        lat, lon, zoom, render_w, render_h, api_key,
+        lat, lon, zoom, render_w, render_h, api_key, road_types,
         tile_render_size=tile_render_size
     )
 
@@ -1162,7 +1184,7 @@ def print_budget_report():
     for name, zone_config in ZONES.items():
         lat, lon, zoom = parse_zone_url(zone_config["url"])
         n_tiles = _count_tiles_for_zone(lat, lon, zoom)
-        road_types = ROAD_TYPES_BY_ZOOM.get(zoom, [0, 1, 2, 3])
+        road_types = resolve_road_types(zone_config, zoom)
 
         flow = n_tiles
         inc = n_tiles
@@ -1170,7 +1192,8 @@ def print_budget_report():
         per_cycle = flow + inc
 
         ann_tag = " 🏷" if zone_config.get("annotations", False) else ""
-        print(f"  {name} (zoom={zoom}, roadTypes={road_types}){ann_tag}")
+        override_tag = " 🔧" if "road_types_override" in zone_config else ""
+        print(f"  {name} (zoom={zoom}, roadTypes={road_types}){override_tag}{ann_tag}")
         print(f"    {n_tiles} tuiles × 2 couches = {per_cycle}/cycle  |  base: {base}/run")
 
         total_per_cycle += per_cycle
@@ -1228,9 +1251,10 @@ if __name__ == "__main__":
     print("\nZones configurées:")
     for name, zone_config in ZONES.items():
         lat, lon, zoom = parse_zone_url(zone_config["url"])
-        road_types = ROAD_TYPES_BY_ZOOM.get(zoom, [0, 1, 2, 3])
+        road_types = resolve_road_types(zone_config, zoom)
         ann = "✓" if zone_config.get("annotations", False) else "X"
-        print(f"  ✓ {name}: zoom={zoom} roadTypes={road_types} annotations={ann}")
+        override_tag = " (override)" if "road_types_override" in zone_config else ""
+        print(f"  ✓ {name}: zoom={zoom} roadTypes={road_types}{override_tag} annotations={ann}")
 
     print_budget_report()
     clear_stale_cache()
