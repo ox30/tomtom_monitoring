@@ -34,15 +34,15 @@ ZONES = {
         "annotations": True,
     },
     "zone_Sargans-Landquart": {
-        "url": "https://plan.tomtom.com/en/?p=47.0149,9.50575,12z",
+        "url": "https://plan.tomtom.com/en/?p=47.01,9.5,12z",
         "annotations": True,
     },
     "zone_Landquart-Chur": {
-        "url": "https://plan.tomtom.com/en/?p=46.92199,9.52654,12z",
+        "url": "https://plan.tomtom.com/en/?p=46.92199,9.5,12z",
         "annotations": True,
     },
     "zone_Chur_Isla-T": {
-        "url": "https://plan.tomtom.com/en/?p=46.81697,9.48109,12z",
+        "url": "https://plan.tomtom.com/en/?p=46.81697,9.5,12z",
         "annotations": True,
     },
     "zone_Globale": {
