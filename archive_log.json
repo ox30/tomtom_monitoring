@@ -218,5 +218,16 @@
     "zip_size": "414M",
     "verified": true,
     "trigger": "schedule"
+  },
+  {
+    "date": "2026-04-28",
+    "archived_at": "2026-04-29T05:21:10Z",
+    "zones": 10,
+    "images": 1430,
+    "zip_file": "captures-2026-04-28.zip",
+    "zip_size_bytes": 435831409,
+    "zip_size": "416M",
+    "verified": true,
+    "trigger": "schedule"
   }
 ]
