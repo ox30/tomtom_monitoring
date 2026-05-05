@@ -216,19 +216,19 @@ jobs:
               TITLE="Archivage Proton OK"
               PRIORITY="2"
               TAGS="white_check_mark,floppy_disk"
-              ACTION_LINE="Action : nouveau fichier upload"
+              ACTION_LINE="Action : nouveau fichier uploadé"
               ;;
             replaced)
-              TITLE="Archivage Proton - fichier remplace"
+              TITLE="Archivage Proton — fichier remplacé"
               PRIORITY="2"
               TAGS="warning,floppy_disk"
-              ACTION_LINE="Action : remplace (ancien fichier ${{ env.OLD_REMOTE_SIZE }} bytes, incomplet ou different)"
+              ACTION_LINE="Action : remplacé (ancien fichier ${{ env.OLD_REMOTE_SIZE }} bytes, incomplet ou différent)"
               ;;
             skipped)
-              TITLE="Archivage Proton - deja a jour"
+              TITLE="Archivage Proton — déjà à jour"
               PRIORITY="1"
               TAGS="information_source"
-              ACTION_LINE="Action : skip (fichier identique deja present)"
+              ACTION_LINE="Action : skip (fichier identique déjà présent)"
               ;;
             *)
               TITLE="Archivage Proton OK"
@@ -241,7 +241,7 @@ jobs:
           Zones : ${{ env.ZONES }}
           Images : ${{ env.IMAGES }}
           Taille ZIP : ${{ env.ZIP_SIZE }}
-          Verifie : ${{ env.VERIFIED }}
+          Vérifié : ${{ env.VERIFIED }}
           Trigger : ${{ github.event_name }}
           ${ACTION_LINE}"
           curl -s \
@@ -260,8 +260,8 @@ jobs:
             exit 0
           fi
           BODY="Date : ${{ env.DATE || 'inconnue' }}
-          Verifie : ${{ env.VERIFIED || 'inconnu' }}
-          Action tentee : ${{ env.ARCHIVE_ACTION || 'inconnue' }}
+          Vérifié : ${{ env.VERIFIED || 'inconnu' }}
+          Action tentée : ${{ env.ARCHIVE_ACTION || 'inconnue' }}
           Trigger : ${{ github.event_name }}
           Run : ${{ github.run_id }}
 
@@ -269,7 +269,7 @@ jobs:
 
           Rattrapage manuel : Actions > Archive to Proton Drive > Run workflow > date=${{ env.DATE }}"
           curl -s \
-            -H "Title: Archivage Proton ECHEC" \
+            -H "Title: Archivage Proton — ÉCHEC" \
             -H "Priority: 4" \
             -H "Tags: rotating_light" \
             -d "$BODY" \
