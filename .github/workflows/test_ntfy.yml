@@ -1,0 +1,156 @@
+name: Test notifications ntfy
+
+# Workflow purement manuel — aucun déclenchement automatique.
+# Utilisé pour valider visuellement sur le téléphone que les 4 formats de
+# notification produits par Archive.yml s'affichent correctement (accents,
+# tiret long, emojis, priorités).
+#
+# Doit rester en miroir d'Archive.yml step "Notification ntfy". Si tu modifies
+# les titres/bodies/priorités/tags dans le workflow d'archivage, mets ce fichier
+# à jour dans le même commit.
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenarios:
+        description: "Quel(s) scénario(s) envoyer"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - "all"
+          - "uploaded"
+          - "replaced"
+          - "skipped"
+          - "failure"
+      topic_url:
+        description: "Override du topic ntfy (vide = utiliser le secret NTFY_TOPIC_URL)"
+        required: false
+        default: ""
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Résoudre le topic ntfy
+        env:
+          OVERRIDE_URL: ${{ github.event.inputs.topic_url }}
+          SECRET_URL: ${{ secrets.NTFY_TOPIC_URL }}
+        run: |
+          if [ -n "$OVERRIDE_URL" ]; then
+            echo "TOPIC_URL=$OVERRIDE_URL" >> $GITHUB_ENV
+            echo "✓ Topic = override fourni en entrée"
+          elif [ -n "$SECRET_URL" ]; then
+            echo "TOPIC_URL=$SECRET_URL" >> $GITHUB_ENV
+            echo "✓ Topic = secret NTFY_TOPIC_URL (topic prod)"
+          else
+            echo "❌ Aucun topic configuré (ni override, ni secret NTFY_TOPIC_URL)"
+            exit 1
+          fi
+          echo "  Scénario(s) demandé(s) : ${{ github.event.inputs.scenarios }}"
+
+      - name: Envoyer les notifications de test
+        env:
+          SCENARIOS: ${{ github.event.inputs.scenarios }}
+        run: |
+          send_notif() {
+            local title="$1" prio="$2" tags="$3" body="$4"
+            echo ""
+            echo "→ [P${prio}] ${title}"
+            curl -s \
+              -H "Title: ${title}" \
+              -H "Priority: ${prio}" \
+              -H "Tags: ${tags}" \
+              -d "$body" \
+              "$TOPIC_URL" || true
+          }
+
+          # ── Scénarios — alignés sur Archive.yml ──────────────────────────
+
+          run_uploaded() {
+            send_notif \
+              "Archivage Proton OK" \
+              "2" \
+              "white_check_mark,floppy_disk" \
+              "Date : 2026-05-05
+          Zones : 11
+          Images : 1562
+          Taille ZIP : 532M
+          Vérifié : true
+          Trigger : test_ntfy
+          Action : nouveau fichier uploadé"
+          }
+
+          run_replaced() {
+            send_notif \
+              "Archivage Proton — fichier remplacé" \
+              "2" \
+              "warning,floppy_disk" \
+              "Date : 2026-05-05
+          Zones : 11
+          Images : 1562
+          Taille ZIP : 532M
+          Vérifié : true
+          Trigger : test_ntfy
+          Action : remplacé (ancien fichier 340123456 bytes, incomplet ou différent)"
+          }
+
+          run_skipped() {
+            send_notif \
+              "Archivage Proton — déjà à jour" \
+              "1" \
+              "information_source" \
+              "Date : 2026-05-04
+          Zones : 11
+          Images : 1562
+          Taille ZIP : 532M
+          Vérifié : true
+          Trigger : test_ntfy
+          Action : skip (fichier identique déjà présent)"
+          }
+
+          run_failure() {
+            send_notif \
+              "Archivage Proton — ÉCHEC" \
+              "4" \
+              "rotating_light" \
+              "Date : 2026-05-05
+          Vérifié : false
+          Action tentée : uploaded
+          Trigger : test_ntfy
+          Run : ${{ github.run_id }}
+
+          Voir : https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          Rattrapage manuel : Actions > Archive to Proton Drive > Run workflow > date=2026-05-05"
+          }
+
+          # ── Dispatch ─────────────────────────────────────────────────────
+
+          case "$SCENARIOS" in
+            uploaded) run_uploaded ;;
+            replaced) run_replaced ;;
+            skipped)  run_skipped ;;
+            failure)  run_failure ;;
+            all)
+              run_uploaded; sleep 2
+              run_replaced; sleep 2
+              run_skipped;  sleep 2
+              run_failure
+              ;;
+            *)
+              echo "❌ Scénario inconnu : $SCENARIOS"
+              exit 1
+              ;;
+          esac
+
+          echo ""
+          echo "════════════════════════════════════════"
+          echo "✓ Test envoyé — vérifie ton téléphone."
+          echo ""
+          echo "Vérifications visuelles :"
+          echo "  [ ] Accents corrects (é, à, É)"
+          echo "  [ ] Tiret long « — » correct (et pas un « ? »)"
+          echo "  [ ] Emojis : ✅ 💾 ⚠️ ℹ️ 🚨"
+          echo "  [ ] Priorités : P4 vibre, P2 silencieux mais visible, P1 discret"
+          echo "════════════════════════════════════════"
