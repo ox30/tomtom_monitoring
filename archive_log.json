@@ -287,14 +287,14 @@
   },
   {
     "date": "2026-05-04",
-    "archived_at": "2026-05-05T13:49:39Z",
+    "archived_at": "2026-05-05T15:56:05Z",
     "zones": 11,
     "images": 1562,
     "zip_file": "captures-2026-05-04.zip",
     "zip_size_bytes": 557775511,
     "zip_size": "532M",
     "verified": true,
-    "trigger": "workflow_dispatch"
+    "trigger": "schedule"
   },
   {
     "date": "2026-05-05",
