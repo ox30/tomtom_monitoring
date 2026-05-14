@@ -386,13 +386,13 @@
   },
   {
     "date": "2026-05-13",
-    "archived_at": "2026-05-13T10:04:13Z",
+    "archived_at": "2026-05-14T05:41:55Z",
     "zones": 11,
-    "images": 814,
+    "images": 1595,
     "zip_file": "captures-2026-05-13.zip",
-    "zip_size_bytes": 290439072,
-    "zip_size": "277M",
+    "zip_size_bytes": 573099384,
+    "zip_size": "547M",
     "verified": true,
-    "trigger": "workflow_dispatch"
+    "trigger": "schedule"
   }
 ]
