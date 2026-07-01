@@ -10,8 +10,9 @@ name: TomTom Traffic Capture (Vector Flow)
 # ─────────────────────────────────────────────────────────────────────────────
 
 on:
-  schedule:
-    - cron: '*/5 * * * *'
+  #schedule:
+    #- cron: '*/5 * * * *'
+    # désactivé avant changement tarification TomTom 01.07.2026
   workflow_dispatch:
     inputs:
       interval:
