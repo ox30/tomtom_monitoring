@@ -33,49 +33,6 @@ ZONES = {
         "url": "https://plan.tomtom.com/en/?p=46.89357,9.49312,10z",
         "annotations": True,
     },
-    "zone_Sargans-Landquart": {
-        "url": "https://plan.tomtom.com/en/?p=47.01,9.5,12z",
-        "annotations": True,
-    },
-    "zone_Landquart-Chur": {
-        "url": "https://plan.tomtom.com/en/?p=46.92199,9.5,12z",
-        "annotations": True,
-    },
-    "zone_Chur_Isla-T": {
-        "url": "https://plan.tomtom.com/en/?p=46.81697,9.5,12z",
-        "annotations": True,
-    },
-    "zone_Globale": {
-        "url": "https://plan.tomtom.com/en/?p=46.58894,9.10568,8z",
-        "annotations": True,
-    },
-    "zone_Amsteg-Göschenen": {
-        "url": "https://plan.tomtom.com/en/?p=46.72234,8.63188,12z",
-        "annotations": True,
-    },
-    "zone_Erstfeld-Amsteg": {
-        "url": "https://plan.tomtom.com/en/?p=46.82056,8.66716,12z",
-        "annotations": True,
-    },
-    "zone_Wassen-Göschenen": {
-        "url": "https://plan.tomtom.com/en/?p=46.68434,8.60391,13z",
-        "annotations": True,
-        # Focus routes cantonales : exclure autoroutes (0) et internationales (1)
-        # du flow. Fallback zoom 13 serait [0, 1, 2, 3, 4].
-        "road_types_override": [2, 3, 4],
-    },
-    "zone_GST_Nord": {
-        "url": "https://plan.tomtom.com/en/?p=46.82968,8.60058,10z",
-        "annotations": True,
-    },
-    "zone_GST_Sud": {
-        "url": "https://plan.tomtom.com/en/?p=46.45552,8.76656,11z",
-        "annotations": True,
-    },
-    "zone_Globale_Nord": {
-        "url": "https://plan.tomtom.com/en/?p=46.95,7.3,8z",
-        "annotations": True,
-    },
 
 }
 
