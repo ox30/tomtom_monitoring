@@ -17,9 +17,9 @@ name: Publish Incidents (incidents-data branch)
 # ─────────────────────────────────────────────────────────────────────────────
 
 on:
-  #schedule:
-    #- cron: '30 1,6,10,14 * * *'
-    # désactivé avant changement tarification TomTom 01.07.2026
+  schedule:
+    - cron: '30 1,6,10,14 * * *'
+    # actif avec une seule zone de test
   workflow_dispatch:
     inputs:
       date:
