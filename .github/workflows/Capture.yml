@@ -10,9 +10,9 @@ name: TomTom Traffic Capture (Vector Flow)
 # ─────────────────────────────────────────────────────────────────────────────
 
 on:
-  #schedule:
-    #- cron: '*/5 * * * *'
-    # désactivé avant changement tarification TomTom 01.07.2026
+  schedule:
+    - cron: '*/5 * * * *'
+    # actif avec une seule zone de test
   workflow_dispatch:
     inputs:
       interval:
