@@ -11,13 +11,13 @@ name: Archive to Proton Drive
 # ─────────────────────────────────────────────────────────────────────────────
 
 on:
-  #schedule:
+  schedule:
     # 4 déclenchements par jour pour la fiabilité (cron GitHub Actions peu fiable la nuit)
-    #- cron: '0 2 * * *'
-    #- cron: '0 8 * * *'
-    #- cron: '0 14 * * *'
-    #- cron: '0 20 * * *'
-    # désactivé avant changement tarification TomTom 01.07.2026
+    - cron: '0 2 * * *'
+    - cron: '0 8 * * *'
+    - cron: '0 14 * * *'
+    - cron: '0 20 * * *'
+    # actif avec une seule zone de test
   workflow_dispatch:
     inputs:
       date:
