@@ -3,7 +3,8 @@ name: Archive to Proton Drive
 # ─────────────────────────────────────────────────────────────────────────────
 # PROD — archive les captures depuis le repo PRIVÉ tomtom-data-prod
 # Source : tomtom-data-prod / captures-prod
-# Journal : tomtom-data-prod / main / archive_log.json
+# Journal : proton:A13-A2/archive_log.json + copie tomtom-data-prod / main
+#           (supprimé puis ré-uploadé : Proton refuse l'écrasement via rclone)
 # Prérequis secrets :
 #   - DATA_REPO_TOKEN     : Fine-grained PAT avec Contents:write sur tomtom-data-prod
 #   - RCLONE_CONFIG_BASE64 : config rclone vers Proton Drive
@@ -130,11 +131,27 @@ jobs:
           fi
 
       - name: Journalisation
+        # Non bloquant : un souci sur le journal ne doit pas signaler un échec
+        # d'archivage alors que le ZIP est uploadé et vérifié.
+        continue-on-error: true
+        env:
+          DATA_REPO_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
         run: |
           mkdir -p /tmp/log
 
           # Récupérer le journal existant depuis Proton Drive
           rclone copy proton:A13-A2/archive_log.json /tmp/log/ 2>/dev/null || true
+
+          # Fallback : copie du journal sur le repo data privé (main)
+          # Évite de repartir d'un journal vide si Proton ne répond pas.
+          if [ ! -f /tmp/log/archive_log.json ]; then
+            echo "⚠ Journal introuvable sur Proton — tentative depuis ${DATA_REPO}/main"
+            curl -sfL \
+              -H "Authorization: Bearer ${DATA_REPO_TOKEN}" \
+              -H "Accept: application/vnd.github.raw" \
+              "https://api.github.com/repos/${DATA_REPO}/contents/archive_log.json?ref=main" \
+              -o /tmp/log/archive_log.json || rm -f /tmp/log/archive_log.json
+          fi
 
           # Créer le fichier s'il n'existe pas
           if [ ! -f /tmp/log/archive_log.json ]; then
@@ -172,9 +189,20 @@ jobs:
           "
 
           # Renvoyer le journal sur Proton Drive
-          rclone copy /tmp/log/archive_log.json proton:A13-A2/ \
-            --progress --stats-one-line
-          echo "✓ Journal synchronisé sur Proton Drive"
+          # Proton refuse l'écrasement d'un fichier existant (422 + erreur de
+          # clé de session) → suppression puis ré-upload comme fichier neuf.
+          # Le journal reste sauvegardé sur ${DATA_REPO}/main (étape suivante).
+          echo "JOURNAL_PROTON=échec" >> $GITHUB_ENV
+          rclone deletefile proton:A13-A2/archive_log.json 2>/dev/null || true
+          if rclone copy /tmp/log/archive_log.json proton:A13-A2/ \
+               --protondrive-replace-existing-draft=true \
+               --progress --stats-one-line; then
+            echo "JOURNAL_PROTON=ok" >> $GITHUB_ENV
+            echo "✓ Journal synchronisé sur Proton Drive"
+          else
+            echo "::warning::Journal non synchronisé sur Proton Drive (archive ZIP non concernée)"
+            exit 1
+          fi
 
       - name: Publier le journal sur le repo data privé (main)
         env:
@@ -223,6 +251,7 @@ jobs:
           echo "   Images : ${{ env.IMAGES }}"
           echo "   Taille ZIP : ${{ env.ZIP_SIZE }}"
           echo "   Vérifié : ${{ env.VERIFIED }}"
+          echo "   Journal Proton : ${{ env.JOURNAL_PROTON }}"
           echo "   Destination : proton:A13-A2/"
           echo "   Déclencheur : ${{ github.event_name }}"
           echo "════════════════════════════════════════"
@@ -278,8 +307,9 @@ jobs:
           Taille ZIP : ${{ env.ZIP_SIZE }}
           Vérifié : ${{ env.VERIFIED }}
           Trigger : ${{ github.event_name }}
+          Journal Proton : ${{ env.JOURNAL_PROTON || 'inconnu' }}
           ${ACTION_LINE}"
-          curl -s \
+          curl -s -o /dev/null \
             -H "Title: ${TITLE}" \
             -H "Priority: ${PRIORITY}" \
             -H "Tags: ${TAGS}" \
@@ -303,7 +333,7 @@ jobs:
           Voir : https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
           Rattrapage manuel : Actions > Archive to Proton Drive > Run workflow > date=${{ env.DATE }}"
-          curl -s \
+          curl -s -o /dev/null \
             -H "Title: Archivage Proton — ÉCHEC" \
             -H "Priority: 4" \
             -H "Tags: rotating_light" \
