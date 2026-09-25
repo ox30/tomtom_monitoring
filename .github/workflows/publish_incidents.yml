@@ -78,7 +78,28 @@ jobs:
           if [ "$HTTP_CODE" != "200" ] || [ ! -s /tmp/incidents.json ]; then
             echo "⚠ Fichier source absent ou inaccessible (HTTP $HTTP_CODE)"
             echo "   URL : $URL"
+            # On distingue les causes : sur un repo privé, 401/403/404 peut
+            # aussi bien signifier « fichier absent » que « token expiré ».
+            case "$HTTP_CODE" in
+              401|403)
+                REASON="Accès refusé (HTTP $HTTP_CODE) — DATA_REPO_TOKEN expiré ou droits insuffisants"
+                ;;
+              404)
+                REASON="Introuvable (HTTP 404) — capture absente pour cette date, OU token expiré (un repo privé renvoie 404 sans droits)"
+                ;;
+              000)
+                REASON="Aucune réponse du serveur (réseau / GitHub indisponible)"
+                ;;
+              200)
+                REASON="Fichier vide (0 byte) — capture incomplète"
+                ;;
+              *)
+                REASON="Réponse inattendue (HTTP $HTTP_CODE)"
+                ;;
+            esac
+            echo "   → ${REASON}"
             echo "SOURCE_MISSING=true" >> $GITHUB_ENV
+            echo "SOURCE_REASON=${REASON}" >> $GITHUB_ENV
             exit 0
           fi
 
@@ -238,10 +259,12 @@ jobs:
 
           git commit -m "$MSG"
 
+          PUSH_OK=false
           for i in 1 2; do
             if git push origin "${TARGET_BRANCH}"; then
               echo "✓ Push réussi (tentative $i/2)"
               echo "PUSHED=true" >> $GITHUB_ENV
+              PUSH_OK=true
               break
             else
               echo "⚠ Push échoué (tentative $i/2) — pull rebase + retry"
@@ -249,6 +272,13 @@ jobs:
               sleep 10
             fi
           done
+
+          # Sans ce garde-fou, un double échec de push laissait le job en vert
+          # et le commit était perdu silencieusement.
+          if [ "$PUSH_OK" != "true" ]; then
+            echo "❌ Push échoué après 2 tentatives — commit non publié"
+            exit 1
+          fi
 
       # ─── 10. Nettoyage ────────────────────────────────────────────────────
       - name: Cleanup
@@ -280,14 +310,40 @@ jobs:
             Trigger : ${{ github.event_name }}"
             TAGS="arrows_counterclockwise"
           fi
-          curl -s \
+          curl -s -o /dev/null \
             -H "Title: $TITLE" \
             -H "Priority: 2" \
             -H "Tags: $TAGS" \
             -d "$BODY" \
             "$NTFY" || true
 
-      # ─── 12. Notification ntfy (échec) ────────────────────────────────────
+      # ─── 12. Notification ntfy (source absente) ───────────────────────────
+      - name: Notif ntfy (aucun incident à publier)
+        if: env.SOURCE_MISSING == 'true'
+        env:
+          NTFY: ${{ secrets.NTFY_TOPIC_URL_STATS }}
+        run: |
+          echo "::warning::Aucun JSON incidents pour ${DATE} — ${SOURCE_REASON}"
+          if [ -z "$NTFY" ]; then exit 0; fi
+          BODY="Date : ${DATE}
+          Cause : ${SOURCE_REASON}
+          Source : ${DATA_REPO}/${SOURCE_BRANCH}/captures/${DATE}/
+
+          À vérifier :
+          - workflow de capture désactivé (GitHub coupe les workflows planifiés
+            après 60 jours sans activité dans le repo)
+          - workflow de capture en échec
+          - validité du PAT DATA_REPO_TOKEN
+
+          Run : https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          curl -s -o /dev/null \
+            -H "Title: Publish incidents — aucune donnée" \
+            -H "Priority: 4" \
+            -H "Tags: warning,mag" \
+            -d "$BODY" \
+            "$NTFY" || true
+
+      # ─── 13. Notification ntfy (échec) ────────────────────────────────────
       - name: Notif ntfy (échec)
         if: failure()
         env:
@@ -297,7 +353,7 @@ jobs:
           BODY="Date : ${DATE:-inconnue}
           Trigger : ${{ github.event_name }}
           Run : https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          curl -s \
+          curl -s -o /dev/null \
             -H "Title: Publish incidents ECHEC" \
             -H "Priority: 4" \
             -H "Tags: rotating_light" \
