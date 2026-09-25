@@ -61,10 +61,18 @@ jobs:
 
       - name: Vérifier que le dossier existe
         run: |
+          # Un « exit 0 » ne termine que cette étape, pas le job : on pose donc
+          # un drapeau HAS_CAPTURES qui conditionne toutes les étapes suivantes.
           if [ ! -d "captures/${{ env.DATE }}" ]; then
             echo "❌ Pas de captures pour ${{ env.DATE }}"
+            echo "   → rien à archiver, les étapes suivantes sont sautées."
+            echo "   → vérifier que les workflows de capture sont bien actifs"
+            echo "     (GitHub désactive les workflows planifiés après 60 jours"
+            echo "      sans activité dans le repo)."
+            echo "HAS_CAPTURES=false" >> $GITHUB_ENV
             exit 0
           fi
+          echo "HAS_CAPTURES=true" >> $GITHUB_ENV
           echo "✓ Dossier captures/${{ env.DATE }} trouvé"
           du -sh captures/${{ env.DATE }}/
 
@@ -77,6 +85,7 @@ jobs:
           echo "IMAGES=${IMAGES}" >> $GITHUB_ENV
 
       - name: Créer le ZIP
+        if: env.HAS_CAPTURES == 'true'
         run: |
           zip -r /tmp/captures-${{ env.DATE }}.zip captures/${{ env.DATE }}/
           SIZE_BYTES=$(stat --format=%s /tmp/captures-${{ env.DATE }}.zip)
@@ -86,15 +95,18 @@ jobs:
           echo "ZIP_SIZE_BYTES=${SIZE_BYTES}" >> $GITHUB_ENV
 
       - name: Installer rclone
+        if: env.HAS_CAPTURES == 'true'
         run: |
           curl -sSfL https://rclone.org/install.sh | sudo bash
 
       - name: Configurer rclone
+        if: env.HAS_CAPTURES == 'true'
         run: |
           mkdir -p ~/.config/rclone
           echo "${{ secrets.RCLONE_CONFIG_BASE64 }}" | base64 -d > ~/.config/rclone/rclone.conf
 
       - name: Upload vers Proton Drive
+        if: env.HAS_CAPTURES == 'true'
         run: |
           LOCAL_SIZE=${{ env.ZIP_SIZE_BYTES }}
           REMOTE_SIZE=$(rclone size proton:A13-A2/captures-${{ env.DATE }}.zip --json 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('bytes',0))" 2>/dev/null || echo "0")
@@ -121,6 +133,7 @@ jobs:
           fi
 
       - name: Vérifier l'upload
+        if: env.HAS_CAPTURES == 'true'
         run: |
           if rclone ls proton:A13-A2/captures-${{ env.DATE }}.zip; then
             echo "✓ Fichier vérifié sur Proton Drive"
@@ -131,6 +144,7 @@ jobs:
           fi
 
       - name: Journalisation
+        if: env.HAS_CAPTURES == 'true'
         # Non bloquant : un souci sur le journal ne doit pas signaler un échec
         # d'archivage alors que le ZIP est uploadé et vérifié.
         continue-on-error: true
@@ -205,6 +219,7 @@ jobs:
           fi
 
       - name: Publier le journal sur le repo data privé (main)
+        if: env.HAS_CAPTURES == 'true'
         env:
           DATA_REPO_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
         run: |
@@ -244,6 +259,7 @@ jobs:
           rm -rf /tmp/data-main
 
       - name: Résumé
+        if: env.HAS_CAPTURES == 'true'
         run: |
           echo "════════════════════════════════════════"
           echo "📋 Archivage du ${{ env.DATE }}"
@@ -257,6 +273,7 @@ jobs:
           echo "════════════════════════════════════════"
 
       - name: Détecter échec d'upload
+        if: env.HAS_CAPTURES == 'true'
         run: |
           if [ "${{ env.VERIFIED }}" != "true" ]; then
             echo "❌ Vérification d'upload échouée (VERIFIED=${{ env.VERIFIED }})"
@@ -268,6 +285,7 @@ jobs:
           echo "✓ Upload vérifié, action=${{ env.ARCHIVE_ACTION }}"
 
       - name: Notification ntfy (succès)
+        if: env.HAS_CAPTURES == 'true'
         env:
           NTFY_TOPIC_URL: ${{ secrets.NTFY_TOPIC_URL }}
         run: |
@@ -313,6 +331,32 @@ jobs:
             -H "Title: ${TITLE}" \
             -H "Priority: ${PRIORITY}" \
             -H "Tags: ${TAGS}" \
+            -d "$BODY" \
+            "$NTFY_TOPIC_URL" || true
+
+      - name: Notification ntfy (aucune capture)
+        if: env.HAS_CAPTURES != 'true'
+        env:
+          NTFY_TOPIC_URL: ${{ secrets.NTFY_TOPIC_URL }}
+        run: |
+          echo "::warning::Aucune capture pour ${{ env.DATE }} — rien à archiver"
+          if [ -z "$NTFY_TOPIC_URL" ]; then
+            exit 0
+          fi
+          BODY="Date : ${{ env.DATE }}
+          Aucun dossier captures/${{ env.DATE }} sur ${{ env.DATA_REPO }}/${{ env.DATA_BRANCH }}.
+
+          Causes probables :
+          - workflow de capture désactivé (GitHub coupe les workflows planifiés
+            après 60 jours sans activité dans le repo)
+          - workflow de capture en échec
+          - rétention trop agressive
+
+          Voir : https://github.com/${{ github.repository }}/actions"
+          curl -s -o /dev/null \
+            -H "Title: Archivage Proton — aucune capture" \
+            -H "Priority: 4" \
+            -H "Tags: warning,mag" \
             -d "$BODY" \
             "$NTFY_TOPIC_URL" || true
 
