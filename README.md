@@ -1,6 +1,6 @@
 # TomTom Traffic Vector Capture
 
-Projet personnel d'exploration technique autour de l'**API TomTom Traffic Vector Tiles**. L'objectif est d'apprendre à parser le format `protobuf` natif des vector tiles et à produire un rendu cartographique fidèle en Python pur (pas de navigateur, pas de SDK), orchestré par GitHub Actions.
+Projet personnel d'exploration technique autour de l'**API TomTom Traffic Vector Tiles**. L'objectif est d'apprendre à parser le format `protobuf` natif des vector tiles et à produire un rendu cartographique fidèle en Python pur (pas de navigateur, pas de SDK), orchestré par GitHub Actions. Test.
 
 ## Architecture
 
